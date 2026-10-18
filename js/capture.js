@@ -18,6 +18,34 @@
 (function () {
   'use strict';
 
+  const DEFAULT_RULES = [
+    '# kind | pattern | settle ms  (one trigger a line; # starts a note)',
+    '# Tartarus Prison is S16 in the log. A run\'s objective, when it shows one:',
+    'objective | S16BoardTaskPop Run | 1500',
+    '# The pick of 3 instruments, and after a re-roll:',
+    'instruments | S16BoardRelicPop Run | 1500',
+    'instruments | Btn_S16Board_RelicPop_Reroll | 2000',
+    '# Each day, once its banner closes, and after a move, once its cards come up:',
+    'board | \\[S16LastDay\\] check cur=\\d+ max=[1-9] | 1500',
+    'board | UI_S16_Card_Up | 1500',
+    '# After an action in the cell, and after each bite of a consume chain',
+    '# (the next meal to pick, or the board after the chain), once it plays',
+    "# out; unless the day ends, as a new day's banner drops a picture still",
+    '# waiting (skip):',
+    'board | Btn_S16Board_ActionCell | 2000',
+    'board | UI_S16_Click_Eat | 2500',
+    'skip | S16BoardNewDayPop Run | 0',
+    "# The Warden's Treasure, which a Chromatic prisoner opens, and the board",
+    '# once it closes, with the gift taken (a consume can open two in a row):',
+    'treasure | S16BoardColoredPop Run | 1500',
+    'board | S16BoardColoredPop Destory | 600',
+    "# The game's Speed-up button: no picture, it flips 'Speed-up is on' here:",
+    'speed | Btn_S16Board_Top_Speed | 0',
+    '# A Cancel (a consume chain stopped), once the board settles:',
+    'board | UI_S16_Click_Cancel | 1500',
+    "# After an event's Confirm (the Sewer Ratway's cell pick, or the board after it):",
+    'board | Btn_S16Board_EventPop_Confirm | 1500',
+  ].join('\n');
   const POLL_MS = 1000;
   const IDB = 'tartarus-sim-capture';
   const listeners = { status: [], hit: [], seen: [], frame: [] };
@@ -32,16 +60,17 @@
   let pace = 1; // settle times are scaled by this: the game's Speed-up runs its animations faster
   let tail = null; // { post(message), stop() }
   let track = null;
+  let windowGeneration = 0;
   let imageCapture = null;
   let surface = ''; // what's shared: 'window', or 'monitor' only with the app's crop
   let video = null;
-  // The desktop app's fallback, when Windows won't share the game window
-  // and the player allowed it there: where the game window is on the shared
-  // screen, and whether it's in front. async () => { x, y, width, height,
-  // screenWidth, screenHeight, front }, in the screen's pixels. Only the app
-  // sets it (useCrop); without it a whole screen is never accepted.
-  let crop = null;
-  let lastWhy = ''; // why the last grab took no picture, when it says
+  let readinessProbe = null, burstEpoch = 0;
+  let crop = null, lastWhy = '';
+  function dropBurst() {
+    burstEpoch++;
+    if (burst) { clearTimeout(burst.timer); clearTimeout(burst.probeTimer); }
+    burst = null;
+  }
 
   const emit = (name, data) => listeners[name].forEach((fn) => {
     try {
@@ -79,6 +108,8 @@
     let decoder = null;
     let rest = '';
     let busy = false;
+    let again = false;
+    let generation = 0;
     let gone = false; // the log isn't there (deleted, or between two logs)
     let failed = ''; // the last error reported, so each is reported once
     let triggers = [];
@@ -106,10 +137,13 @@
     let begun = false; // whether the log has been found since start
     let fromFirst = false;
     async function tick() {
-      if (!handle || busy) return;
+      if (!handle) return;
+      if (busy) { again = true; return; }
       busy = true;
+      const ticket = generation;
       try {
         const file = await handle.getFile();
+        if (ticket !== generation) return;
         if (!begun) {
           // The first look starts at the end of the log, unless it was
           // missing until now: then the game wrote all of it since.
@@ -128,6 +162,7 @@
         if (file.size - offset > MAX_READ) readFrom(file.size - MAX_READ);
         if (file.size > offset) {
           const buf = await file.slice(offset, file.size).arrayBuffer();
+          if (ticket !== generation) return;
           offset = file.size;
           const lines = (rest + decoder.decode(buf, { stream: true })).split(/\r?\n/);
           rest = lines.pop().slice(-MAX_LINE);
@@ -148,18 +183,22 @@
           post({ type: 'lines', count: lines.length, detail, lang, hits: hits.slice(-MAX_HITS) });
         }
       } catch (e) {
-        fail(e);
+        if (ticket === generation) fail(e);
+      } finally {
+        busy = false;
+        if (again) { again = false; queueMicrotask(tick); }
       }
-      busy = false;
     }
     return {
       start(h, fromStart) {
+        generation++;
         handle = h;
         begun = false;
         fromFirst = !!fromStart;
         return tick();
       },
       stop() {
+        generation++;
         handle = null;
       },
       rules(list, watchSource) {
@@ -240,6 +279,7 @@
     const follow = follower(onMessage);
     follow.rules(message.rules, message.watch);
     const timer = setInterval(() => follow.tick(), POLL_MS);
+    const unwatch = typeof handle.watch === 'function' ? handle.watch(() => follow.tick()) : null;
     follow.start(handle, false).catch((e) => onMessage({ type: 'error', message: String(e.message || e) }));
     tail = {
       post: (m) => {
@@ -247,6 +287,7 @@
       },
       stop: () => {
         clearInterval(timer);
+        if (typeof unwatch === 'function') unwatch();
         follow.stop();
       },
     };
@@ -278,42 +319,80 @@
     // A "skip" line (a new day's banner) drops a picture still waiting to be
     // taken, as the screen is changing: the next screen's own line follows.
     if (rule.kind === 'skip') {
-      if (burst) clearTimeout(burst.timer);
-      burst = null;
+      dropBurst();
       return;
     }
     // A "speed" line (the game's Speed-up button) takes no picture: the page
     // hears it as a hit, and sets the pace.
     if (rule.kind === 'speed') return;
-    // The board after the Warden's Treasure's popup closes (View Prison
-    // Status pressed quickly, or a gift taken) gets its own picture: the
-    // Treasure still waiting goes at once, as it needs none (d8: a press
-    // within 1.5 s of the popup merged into it, and the board was never
-    // pictured).
+    // View Prison Status may close a Treasure before its settling timer.
+    // Treasure advice needs no bitmap; flush it now so the following board
+    // receives its own capture instead of inheriting the popup's priority.
     if (burst && burst.kind === 'treasure' && rule.kind === 'board') {
-      clearTimeout(burst.timer);
-      fire();
+      const previous = burst;
+      dropBurst();
+      emit('frame', { kind: 'treasure', hits: previous.hits, frame: null, why: '', time: new Date(),
+        settle: { mode: 'deadline', waitedMs: Math.round(performance.now() - previous.started), savedMs: 0 } });
     }
-    // Lines in a burst become one frame, once the log has been quiet for the
-    // longest settle time among them.
-    if (!burst) burst = { kind: rule.kind, rank: rule.rank, settle: 0, hits: [], timer: 0 };
+    // Keep each event's full fallback deadline. Verified screen readiness
+    // may release it early; later short events do not stack another wait.
+    if (!burst) burst = { kind: rule.kind, rank: rule.rank, settle: 0, deadline: 0, hits: [], timer: 0, probeTimer: 0, started: performance.now() };
+    burst.epoch = ++burstEpoch;
     if (rule.rank > burst.rank) {
       burst.kind = rule.kind;
       burst.rank = rule.rank;
     }
-    burst.settle = Math.max(burst.settle, Math.max(250, rule.settle * pace));
+    const wait = Math.max(250, rule.settle * pace);
+    burst.settle = Math.max(burst.settle, wait);
+    const now = performance.now();
+    burst.lastEventAt = now; burst.probeUnavailable = false;
+    burst.deadline = Math.max(burst.deadline, now + wait);
     if (burst.hits.length < 40) burst.hits.push({ kind: hit.kind, at: hit.at, text: hit.text });
     clearTimeout(burst.timer);
-    burst.timer = setTimeout(fire, burst.settle);
+    const delay = window.TartarusDesktop && window.TartarusDesktop.fast ? Math.max(0, burst.deadline - now) : burst.settle;
+    const b = burst;
+    burst.timer = setTimeout(() => fire(b), delay);
+    clearTimeout(burst.probeTimer);
+    if (readinessProbe && b.kind === 'board' && delay >= 900) b.probeTimer = setTimeout(() => probe(b), Math.max(250, 450 * pace));
   }
 
-  async function fire() {
-    const b = burst;
+  async function probe(b) {
+    if (burst !== b || !readinessProbe || b.probing || !mayCapture()) return;
+    b.probing = true;
+    const epoch = b.epoch;
+    let frame;
+    try {
+      frame = await grab();
+      if (frame && burst === b && epoch === b.epoch) {
+        const check = readinessProbe;
+        if (!check) return;
+        const ready = await check(frame, { epoch, kind: b.kind, hits: b.hits });
+        if (ready === null && epoch === b.epoch) b.probeUnavailable = true;
+        if (ready && readinessProbe === check && burst === b && epoch === b.epoch && performance.now() < b.deadline && mayCapture()) {
+          const captured = frame; frame = null;
+          await fire(b, captured);
+        }
+      }
+    } catch { /* The original deadline remains armed if a probe fails. */ }
+    finally {
+      if (frame) frame.close();
+      b.probing = false;
+      if (burst === b && readinessProbe && !b.probeUnavailable && performance.now() + 100 < b.deadline) {
+        clearTimeout(b.probeTimer);
+        b.probeTimer = setTimeout(() => probe(b), Math.max(100, b.lastEventAt + Math.max(250, 450 * pace) - performance.now()));
+      }
+    }
+  }
+
+  async function fire(b, earlyFrame) {
+    if (!b || burst !== b) { if (earlyFrame) earlyFrame.close(); return; }
+    clearTimeout(b.timer); clearTimeout(b.probeTimer);
+    const epoch = b.epoch;
     burst = null;
-    if (!b) return;
-    const frame = await grab();
+    const frame = earlyFrame || await grab();
+    if (epoch !== burstEpoch || !agreed()) { if (frame) frame.close(); return; }
     if (frame) setState({ frames: state.frames + 1 });
-    emit('frame', { kind: b.kind, hits: b.hits, frame, blank: isBlank(frame), why: frame ? '' : whyNot(), time: new Date() });
+    emit('frame', { kind: b.kind, hits: b.hits, frame, why: frame ? '' : whyNot(), time: new Date(), settle: { mode: earlyFrame ? 'ready' : 'deadline', waitedMs: Math.round(performance.now() - b.started), savedMs: earlyFrame ? Math.max(0, Math.round(b.deadline - performance.now())) : 0 } });
   }
 
   // #endregion
@@ -357,7 +436,7 @@
   // What follow.html saves when the player agrees (shared with js/follow.js
   // and js/auto.js), and the version of that page they agreed to.
   const SETTINGS = 'tartarus-sim:auto:v1';
-  const CONSENT_VERSION = 5;
+  const CONSENT_VERSION = window.TartarusDesktop && window.TartarusDesktop.fast ? 4 : 5;
 
   // Whether the player agreed to this version of follow.html. It's read
   // again every time it's needed, so turning Auto Screenshot Mode off on that
@@ -490,6 +569,7 @@
   function stopLog() {
     if (tail) tail.stop();
     tail = null;
+    dropBurst();
     setState({ log: 'off' });
   }
 
@@ -500,26 +580,32 @@
   // game is on, which the app picks.
   async function connectWindow(opts) {
     mustAgree();
+    const generation = ++windowGeneration;
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') throw new Error('This browser can’t share a window.');
     const screen = !!(opts && opts.screen && crop);
     // The browser's picker lists the open windows; the player picks the
     // game. Whole screens and this tab aren't offered, and the share can't
     // be switched to something else while it runs.
-    const stream = await navigator.mediaDevices.getDisplayMedia(screen
-      ? { video: { frameRate: { ideal: 5, max: 10 } }, audio: false, selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude' }
-      : {
-        video: { displaySurface: 'window', frameRate: { ideal: 5, max: 10 } },
-        audio: false,
-        monitorTypeSurfaces: 'exclude',
-        selfBrowserSurface: 'exclude',
-        surfaceSwitching: 'exclude',
-      });
-    useStream(stream, screen);
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: 'window', frameRate: window.TartarusDesktop && window.TartarusDesktop.fast ? { ideal: 30, max: 30 } : { ideal: 5, max: 10 } },
+      audio: false,
+      monitorTypeSurfaces: 'exclude',
+      selfBrowserSurface: 'exclude',
+      surfaceSwitching: 'exclude',
+    });
+    // Closing the board/withdrawing consent can happen while Chromium is
+    // still opening the capture. Never attach that obsolete stream later.
+    if (generation !== windowGeneration || !agreed()) {
+      stream.getTracks().forEach((x) => x.stop());
+      return false;
+    }
+    useStream(stream);
+    return true;
   }
 
   function useStream(stream, screen) {
     mustAgree();
-    stopWindow();
+    stopWindow(true);
     const t = stream.getVideoTracks()[0];
     const kind = t && t.getSettings ? t.getSettings().displaySurface : '';
     // Only a single window is accepted: a whole screen or a browser tab is
@@ -532,6 +618,7 @@
     track = t;
     surface = kind;
     track.addEventListener('ended', () => {
+      if (track !== t) return;
       track = null;
       surface = '';
       imageCapture = null;
@@ -559,7 +646,9 @@
     return !!crop;
   }
 
-  function stopWindow() {
+  function stopWindow(keepPending = false) {
+    windowGeneration++;
+    if (!keepPending) dropBurst();
     if (track) track.stop();
     track = null;
     surface = '';
@@ -713,6 +802,8 @@
     setRules,
     setWatch,
     setPace,
+    setReadinessProbe: (probe) => { readinessProbe = typeof probe === 'function' ? probe : null; if (!readinessProbe && burst) clearTimeout(burst.probeTimer); },
+    DEFAULT_RULES,
     captureNow,
     grab,
   };

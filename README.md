@@ -1,73 +1,105 @@
-# Tartarus Simulator
+# Tartarus Overlay — оптимизированный локальный форк
 
-A free, fan-made English practice simulator for the Tartarus prison season (SS14) of *Torchlight: Infinite*. It began as a translation of the Chinese fan simulator [塔羅斯监狱 (Talos Prison)](https://torchlightskill.com/talos/), but its rules have since been updated to match the video reveal, so it now differs heavily from the Chinese sim. You walk the ring of fifteen cells around the warden's office: patrol a door each morning, let beasts devour same-rarity rivals, and raise inmates from Normal to Rainbow before the handoff.
+Форк [Tartarus Simulator / CoffeeBns](https://github.com/blahdot3h/tartarus-simulator)
+для быстрого получения подсказок в оверлее Torchlight: Infinite.
+Версия: **0.2.17-local.16**, правила и распознавание синхронизированы с
+[исходником автора `f35a50a`](https://github.com/blahdot3h/tartarus-simulator/tree/f35a50a96976bdc3b577a4f7b5655cebda9ba1b7).
 
-Made by **CoffeeBns**: [twitch.tv/coffeebns](https://twitch.tv/coffeebns) and [youtube.com/@CoffeeBns](https://youtube.com/@CoffeeBns).
+## Что оптимизировано
 
-## Play it
+- **Локальный оверлей.** Один фоновый обработчик анализа; настройки и исправление
+  доски открываются по запросу. Запуск не требует открытого браузера.
+- **Передача кадров.** Картинка передаётся напрямую в распознавание через
+  `ImageBitmap`. Промежуточные PNG и пересылка полноразмерных кадров между
+  страницами убраны из этого пути. Неактуальные кадры и задания отменяются;
+  необязательная запись скриншотов выполняется после выдачи подсказки.
+- **Распознавание.** Общие проходы по пикселям, меньше временных объектов,
+  2–4 постоянных вспомогательных воркера для поиска доски и чтения панелей.
+  Геометрия доски проверяется и используется повторно; панель переиспользуется
+  только при полном совпадении её пикселей. Заключённые и события читаются заново.
+- **Монте-Карло.** Быстрое копирование состояния, подготовка неизменных данных
+  один раз на порцию расчёта, кэш точных значений цепочек. Сохранены полный
+  бюджет расчёта, случайные потоки и итоговые оценки. Ограничение автора
+  в 700 мс с досрочной остановкой здесь не включено.
+- **Кэш подсказок.** До 256 полных результатов, около 8 МиБ, срок хранения
+  7 дней; сохраняется после перезапуска. Совпасть должны все входные данные,
+  инструменты, правила и бюджет расчёта. Ручной Recheck пересчитывает заново.
+- **Подготовка следующих ходов.** Фоновый расчёт до двух действий вперёд;
+  горизонт продлевается после каждого подтверждённого хода. Используется
+  только точное совпадение с реально прочитанной доской. Незавершённый подходящий
+  расчёт продолжается с уже набранными выборками. Общая таблица патрулей
+  переиспользуется для разных наборов доступных дверей.
+- **Нагрузка вне режима.** При выходе с экрана тюрьмы останавливаются захват,
+  распознавание, OCR и расчёты наперёд. Остаются наблюдение за логом и лёгкий
+  поиск окна через Win32. Устаревшие асинхронные ответы не возобновляют работу.
+- **Меньше повторных подтверждений.** Подтверждённые инструменты сохраняются
+  между кадрами и перезапусками; добавлены образцы значков Crown и Claws.
 
-**Online:** https://blahdot3h.github.io/tartarus-simulator/
+## Измеренный прирост
 
-**Locally:** open `index.html` in a browser. There is no build step and no server to start. Fonts load from Google Fonts; without a connection the page falls back to system fonts.
+Сравнение с исходником автора **0.2.17**, с одинаковыми новыми правилами.
+Замеры 18 октября 2026: Windows x64, Ryzen 5 3600, 12 логических ядер,
+Node.js 22.16.0 и Electron 44.5.1 / Node.js 24.21.0. Числа ниже — медианы
+после прогрева; реализации запускались поочерёдно. Это замеры отдельных
+этапов, а не времени всего игрового хода.
 
-## How it plays
+| Проверка | До | После | Ускорение |
+| --- | ---: | ---: | ---: |
+| Монте-Карло в Electron: старт, 48 раундов, 5 повторов | 186 мс | 92 мс | **2,02×** |
+| Монте-Карло в Electron: доска с инструментами, 48 раундов, 5 повторов | 80 мс | 36 мс | **2,22×** |
+| Монте-Карло в Electron: Cage Fight, 48 раундов, 5 повторов | 118 мс | 33 мс | **3,58×** |
+| Полный пакет Монте-Карло в Node: 12 состояний, 24 раунда на вариант, 5 повторов | 8 735 мс | 3 344 мс | **2,61×** |
+| Копирование состояний в Node, тот же тест, 5 повторов | 1 129 мс | 445 мс | **2,54×** |
+| Последовательное распознавание кадра A, 2560×1440, 3 повтора | 4 548 мс | 2 218 мс | **2,05×** |
+| Последовательное распознавание кадра B, 2560×1440, 3 повтора | 5 342 мс | 2 383 мс | **2,24×** |
 
-The board layout follows the original Chinese tool. The rules follow the video reveal wherever it shows them, and practice values fill the gaps:
+Отдельно проверен параллельный режим **внутри оптимизированной сборки**:
+кадр A — с 1 962 до 843 мс (**2,33×**), кадр B — с 2 256 до 1 106 мс
+(**2,04×**). Здесь сравниваются её последовательный и параллельный пути;
+также взята медиана трёх повторов после прогрева, результаты чтения совпадают.
 
-- **The ring.** 16 cells sit around a 6×4 board, numbered clockwise from the top-left corner. Cell 01 is the warden's office: every run starts there and nothing is ever held in it, so 15 cells hold prisoners. The decision panel sits in the courtyard in the middle, and a lantern marks the warden's cell.
-- **Patrols.** Each morning offers 3 destination cells from the next 6 clockwise from the warden. They appear as cards under the ring and glow on it. A destination can be a locked cell, which opens when the warden arrives, a cell with an inmate you already know, or the warden's office, where you choose Instigate (a special event appears on a random cell: behind a locked door, or beside an inmate, which a walk into its cell sets off; 2 when the board has none) or Bestow (1 random inmate rises a tier). You can't see inside a locked cell until it opens. Devoured inmates leave their cells sealed again.
-- **Swaps.** Once a day, the inmate in the warden's cell can be swapped for a brand-new random one. No other cell can be swapped. A day has a swap or a devour, not both: either one uses up the other, as in the live game.
-- **Consumes.** One consume a day, and only the inmate in the warden's cell can start it: double-click a target, or click once to preview and again to confirm. The eater then goes on eating while it has a valid target: after each bite you pick its next meal, even when there's only one, or stop the chain, as the game's Cancel button does. The Lab can make chains go on by themselves instead. The log shows every bite as beast icons.
-- **Day recap.** Each morning a strip under the destination cards shows what happened the day before: the door you opened, devour chains, swaps, events and Rainbows. After the patrol it follows the current day.
-- **Special events.** Chain reaction: the next patrol opens every sealed door on the clockwise walk. Execution: wipes out lower-rarity prey for one tier each. Behind Closed Doors: the inmate behind the door becomes a Supreme of the scarcest beast on the block. Ravenous Appetite: a lowest-rarity inmate gets 5 tries at +1 tier, 50% each. High-Risk Convict: a random locked cell opens on a Legendary or better. Crow Whispers: the next 4 locked cells show their inmates' rarity. Taste of Freedom: 3 random locked cells open. Usurpation I: a random inmate rises a tier, then Usurpation II (2 inmates rise a tier) takes its place in the pool and appears behind a locked cell; II brings Usurpation III (2 random inmates rise 2 tiers), and III brings Usurpation IV (every inmate rises 2 tiers), the last. Sewer Ratway: the warden moves to any cell but the office, and a locked door there opens as on a patrol (the move adds no tiles). "Treasure" Hunt: every locked cell holding a Normal or Magic shows its rarity, so the doors left dark hold Rare or better (its card has only Confirm). Extra Portion: up to 3 random inmates rise a tier (from a player's report). Each is equally likely, and each but the Hunt can be accepted or skipped. Events appear at random behind locked cells and show at once: 72% of runs start with one, and a new one comes on 5% of mornings, 9% of patrols and 4% of the day's other moves. An event can also sit in an open cell beside its inmate (a "!" by the cell; its popup says "Can trigger Prison Incident"), and walking in sets it off. The analyzer and the screenshot reader take such cells, and in simulated runs Instigate makes them.
-- **Markers.** Tusk, Prey, Scratch and Rat nest each have a focused drill, and can be placed with the Lab's scene editor.
-- **Food chain.** Mammoth eats Lion, Lion eats Wolf, Wolf eats Rat and Rat eats Mammoth, and Mammoths also eat Wolves and Lions also eat Rats, always at the eater's rarity. These second meals were first kept to Legendary and up, where live screenshots first showed them; players' games then offered them at every rarity, as first meals and mid-chain, so since 2026-10-17 they're at every rarity. The Lab sets the rarity where they start.
-- **Objectives, tools and the Warden's Treasure.** Every drill starts with a pick of three random tools, as the live game does. Each run draws a random objective, King of the Caged (an inmate reaches Supreme) or Prison Walk (move 18 tiles), and meeting it earns a tool (pick one of three). So a Supreme earns a tool only when the objective is King of the Caged. The live game has more objectives, and what they pay isn't known yet, so every objective here pays a tool. The analyzer also knows Survival of the Fittest (consume 4 times), Undercurrents (trigger a Prison Incident 2 times) and Behind Cell Doors (open 10 cells, however they open). Besides its objective, a run can start with a card: Cage Fight (an inmate can consume the beasts it counters at its own rarity or lower, Mammoths and Lions eat both their meals at any rarity, and consuming never changes the eater's beast) Iron Law (the run lasts 30 days), Tyranny (each stop at the office also triggers Instigate and Bestow 3 more times each) or Opulence (each Warden's Treasure gives 3 picks in a row, and a Rainbow made by a pick brings 3 more). The analyzer sets them under Start of run; simulated runs don't draw them yet. Each Rainbow opens the Warden's Treasure for a gift. The vault holds 10 Rainbows; once it's full, inmates rise no higher than Supreme. The Lab sets how many tools a drill starts with, or switches rewards off for pure rules practice.
-- **Trainer.** An optional sidebar, toggled from the top bar, that works in every situation:
-  - **Recommended move:** the trained strategy's pick appears at once, with its reason and the matching lesson from training. The recommended cell, card or button is marked on the board.
-  - **Live check:** every option is played out hundreds of times from the current position, with everything you can't see re-rolled each time. Options are ranked by Rainbows vaulted.
-  - **Grades:** each move you make is graded against that check (best, close, or what it cost), with a tally for the run.
-  - **Where it runs:** in a Web Worker, or on the page itself when opened from disk.
-- **Strategy guide.** [strategy.html](https://blahdot3h.github.io/tartarus-simulator/strategy.html) is a rough strategy to learn before playing, built from the lab's data: how to vault Rainbows. It's linked from the title screen and the menu.
-- **Board analyzer.** [analyze.html](https://blahdot3h.github.io/tartarus-simulator/analyze.html) takes the board from your live game and tells you what to do next. Enter each cell (sealed, an inmate's beast and rarity, a rat nest, an event), the warden, today's doors, your tools, Rainbows and objective (King of the Caged, Prison Walk with its tiles, or another one, for which no tool is assumed). Every option is ranked by the same live check as the Trainer. **Do it here** plays the move with the simulator's dice and marks the cells to check against your game. It's linked from the title screen and the menu.
-- **Screenshot reader.** On the analyzer, paste, drop or choose a screenshot of the prison screen to fill the board in. It reads which cells are locked, each inmate's beast and rarity, rat nests, events, the jaws markers, the warden, today's door cards, the days until the riot, the torture instruments held and the Chromatic prisoners captured, at any UI scale. Anything it's unsure of is marked Check. Objectives aren't read yet, so the objective panel is shown beside the reading. The reader runs in the browser, and the screenshot never leaves it. See [tools/README.md](tools/README.md#screenshot-reader) for how it works and how accurate it is.
-- **Strategy lab.** `tools/strategy-sim.js` plays millions of simulated runs on every CPU core to tune that strategy and rank tools, gifts and chain setups. No AI: every choice comes from scoring rules. See [tools/README.md](tools/README.md).
-- **Everything else.** Seeds, undo, autosave, export/import, a Lab (scene editor and adjustable practice values) and a handbook.
+В тесте реального Electron-оверлея уже подготовленная подсказка выдавалась
+за **1–2 мс**, а новый расчёт той же тестовой позиции занимал **1,67–1,82 с**.
+Это отдельные наблюдения при попадании в прогноз: в них не входят ожидание
+анимации, захват и распознавание. Прогноз подходит не к каждому следующему ходу.
 
-## Files
+Рост FPS, профит в час и общий выигрыш времени за игровой забег пока не измерены.
+Множители разных этапов нельзя перемножать. Ускорение не получено за счёт
+уменьшения рабочего бюджета Монте-Карло.
 
-| File | Purpose |
-| --- | --- |
-| `index.html` | Page markup and dialogs |
-| `css/style.css` | All styles, including the board backdrop |
-| `js/engine.js` | Rules and game state. No DOM, so it also runs under Node (`require('./js/engine.js')`) |
-| `js/sound.js` | Web Audio sound effects |
-| `js/solver.js` | The strategy, the chain math and the Monte Carlo solver. No DOM, so it also runs under Node |
-| `js/solver-worker.js` | Runs the solver off the page's main thread |
-| `tools/strategy-sim.js` | The strategy lab: millions of simulated runs, tuning and reports |
-| `js/ui.js` | Rendering, input, saves and preferences |
-| `js/board.js` | The board's artwork (beast portraits, lantern, office), shared by every page |
-| `analyze.html`, `js/analyze.js` | The board analyzer, and the screenshot reader's page |
-| `js/report.js` | The analyzer's Report something new dialog: an event, instrument or gift the simulator doesn't have yet, with a cropped screenshot |
-| `js/capture.js`, `js/auto.js`, `follow.html` | Auto Screenshot Mode (beta; called Follow my game until 2026-10-16): the analyzer follows the game log and reads pictures of the shared game window. It's set up on `follow.html`, which the analyzer's header links to; the page explains it with its code, and nothing runs until the player agrees there |
-| `tools/serve.js` | A local copy of the site for testing before a push (VS Code: Run and Debug, Local site) |
-| `js/scan.js` | The screenshot reader. Pure functions on pixels, so it also runs under Node |
-| `js/scan-data.js` | The reader's reference data, made by `tools/scan-build.js` |
-| `js/scan-worker.js` | Runs the reader off the page's main thread |
-| `tools/scan-build.js`, `tools/scan-test.js` | Build the reader's reference data from labeled screenshots, and score the reader |
-| `js/live.js` | Shares the boards players ask about in the analyzer, in runs of two or more in a row, to measure live's odds |
-| `worker/` | The collector those boards go to: a Cloudflare Worker with a D1 database (see `worker/README.md`) |
-| `tools/live-data.js`, `beta/data/` | Pulls the shared boards into the repo and measures the live odds against the simulator's (`beta/data/rates.json`) |
-| `canvas.html`, `css/canvas.css`, `js/canvas-ui.js` | The Frozen Canvas trainer: practice canvases, or your own canvas set up by hand, with move advice. Hidden for now: no page links to it |
-| `js/canvas-engine.js` | The Frozen Canvas rules (6×6 canvas, paints, objectives, brushstrokes). No DOM, so it also runs under Node |
-| `js/canvas-solver.js` | The canvas strategy and its Monte Carlo check, aiming for a Lv7 Treasure Chest |
-| `tools/canvas-sim.js` | The canvas lab: plays canvases with the strategy and measures the Lv7 chest rate |
-| `.github/workflows/live-data.yml` | Runs `tools/live-data.js pull` every 6 hours and commits what's new |
+Условия и результаты проверок: [отчёт замеров](tools/results/overlay-performance-20261018.json).
 
-## Credits
+## Запуск оптимизированного режима
 
-This English version is made by **CoffeeBns** ([Twitch](https://twitch.tv/coffeebns), [YouTube](https://youtube.com/@CoffeeBns)).
+Windows, установленный [Tartarus Overlay автора](https://github.com/blahdot3h/tartarus-simulator/releases/tag/v0.2.17).
+Его Electron используется как среда выполнения; исходники оверлея и анализатора
+загружаются из этого форка. Отдельная установка Node.js для запуска не нужна.
 
-This began as an English translation of the Chinese fan simulator [塔羅斯监狱 (Talos Prison)](https://torchlightskill.com/talos/) by 爱玩游戏的吉吉罗 ([Douyin](https://v.douyin.com/okD24Xnc6wo/), also 二零后游戏荒 on [Bilibili](https://space.bilibili.com/39881994)). The board layout follows the original, but the rules have since been updated to match the video reveal, so this version now differs heavily from the Chinese sim. The original author is not involved in this version. This English version is an independent re-implementation with its own code and artwork: the beast portraits and the courtyard backdrop were drawn for this project. No code, images or audio were copied from that tool.
+Полностью закройте ранее запущенный оверлей через трей и выполните из папки форка:
 
-Unofficial. Not affiliated with or endorsed by the developers or publishers of *Torchlight: Infinite*. The odds of who's behind a door and who a Replace brings in are measured from players' boards (1,011 doors and 261 Replaces, 2026-10-16); daily limits are practice values and may differ from the live game.
+```powershell
+.\Start-Local-Overlay.cmd
+```
+
+Игра должна работать в оконном режиме или без рамки. Другой путь к установленному
+оверлею задаётся переменной `TARTARUS_OVERLAY_EXE`.
+Проверка запуска: `.\Start-Local-Overlay.cmd --check`.
+
+## Как проверить прирост
+
+Для проверок нужен Node.js 22+. Сохраните указанную выше ревизию автора
+в отдельную папку `BASELINE`, затем из папки форка выполните:
+
+```powershell
+node tools/solver-check.js --baseline BASELINE/js/solver.js --bench
+node tools/scan-check.js --baseline BASELINE/js/scan.js --frames FRAMES --bench
+node tools/scan-parallel-check.js --frames FRAMES --bench
+node tools/overlay-check.js --solver-baseline BASELINE/js
+node tools/overlay-check.js --forecast
+```
+
+`BASELINE` заменяется путём к исходнику автора; `FRAMES` — папкой тестовых
+кадров `.rgba` с парными `.json`, содержащими `width` и `height`.
+Личные игровые скриншоты и профили в форк не включены.
+Проверки сравнивают полные результаты распознавания, решения, выборки
+Монте-Карло, ранжирование, работу кэша и остановку фоновых задач.

@@ -38,8 +38,9 @@
   // pixels: pictures may come as raw pixels rather than a PNG.
   const announce = () => say({ type: 'here', focusedAt, pixels: true });
 
-  async function onPicture(m) {
-    const answer = (patch) => channel.postMessage(Object.assign({ type: 'read', to: m.from, id: m.id }, patch));
+  async function onPicture(m, reply) {
+    const answer = reply || ((patch) => channel.postMessage(Object.assign({ type: 'read', to: m.from, id: m.id }, patch)));
+    const reuse = !!(reply && window.TartarusDesktop && window.TartarusDesktop.fast);
     const before = lastKind;
     lastKind = m.kind;
     // The Treasure's picks still waiting (Opulence gives 3 a Treasure),
@@ -57,6 +58,7 @@
       else if (A.giftsDone) A.giftsDone();
     }
     if (m.kind === 'treasure') {
+      if (m.bitmap) m.bitmap.close();
       // The Warden's Treasure: every gift is on offer, so nothing is read
       // (it may come with no picture at all); the advice is on the board as
       // it is. It reads nothing, so it doesn't make a board still being
@@ -67,26 +69,27 @@
         answer({ state: 'used', asked: false });
         return;
       }
-      const asked = A.useTreasure(m.after);
+      const asked = A.useTreasure(m.after, reuse);
       answer({ state: 'used', asked });
       return;
     }
     const mine = ++newest;
     if (m.treasureView) viewing += 1;
     try {
-      await readPicture(m, answer, mine, before);
+      await readPicture(m, answer, mine, before, reuse);
     } finally {
       if (m.treasureView) viewing -= 1;
+      if (m.bitmap) m.bitmap.close();
     }
   }
 
   // A picture to read: a board, the instrument pick, the objective, or a
   // picture the log didn't name.
-  async function readPicture(m, answer, mine, before) {
+  async function readPicture(m, answer, mine, before, reuse) {
     let bitmap;
     try {
       const p = m.pixels;
-      bitmap = await createImageBitmap(p ? new ImageData(new Uint8ClampedArray(p.buffer), p.width, p.height) : m.blob);
+      bitmap = m.bitmap || await createImageBitmap(p ? new ImageData(new Uint8ClampedArray(p.buffer), p.width, p.height) : m.blob);
     } catch (e) {
       answer({ read: { ok: false, reason: 'the picture couldn’t be opened' } });
       return;
@@ -108,46 +111,42 @@
       pickFresh = !!m.fresh || (before === 'instruments' && pickFresh);
       const fresh = pickFresh;
       const read = await A.readPick(bitmap);
+      if (mine !== newest) return;
       if (read.ok) {
         answer({ read });
-        if (read.unsure && A.langMissed) A.langMissed('instrument offer', bitmap, `${read.unsure} of the cards not read`);
-        if (mine !== newest) return;
-        const asked = A.usePick(read, fresh);
+        const asked = A.usePick(read, fresh, reuse);
         answer({ state: 'used', asked });
         return;
       }
-      // No offer in the picture: the log's line came, but the screen was
-      // already the board (report 327: the patrol's doors, read right,
-      // while the advice stayed on an offer's pick). It's read as a board.
       offerMissed = read.reason || 'not read';
     }
     // A picture the log didn't name (Take a picture now) may be the
     // instrument offer: at least two of its cards read surely, which no
     // board does. It starts a run unless a board came in the last few
     // minutes (an objective's reward comes mid-run).
-    if (m.kind !== 'board') {
+    if (m.kind !== 'board' && m.kind !== 'instruments') {
       const pick = await A.readPick(bitmap);
+      if (mine !== newest) return;
       const sure = pick.ok ? pick.cards.map((c) => c.conf).sort((a, b) => b - a)[1] : 0;
       if (sure >= 0.5) {
         answer({ read: pick });
         if (mine !== newest) return;
         lastKind = 'instruments';
         pickFresh = Date.now() - lastBoardAt > 300000;
-        const asked = A.usePick(pick, pickFresh);
+        const asked = A.usePick(pick, pickFresh, reuse);
         answer({ state: 'used', asked });
         return;
       }
     }
-    const read = await A.readFrame(bitmap);
-    // Neither an offer nor a board: an offer in another language, maybe.
-    if (!read.ok && offerMissed && A.langMissed) A.langMissed('instrument offer', bitmap, offerMissed);
+    const read = await (m.bitmap && A.readFrameDirect ? A.readFrameDirect(bitmap) : A.readFrame(bitmap));
+    if (mine !== newest) return;
     // A picture with no board in it: maybe the Warden's Treasure, read by
     // its printed text. A board's picture can catch it too (report 55).
     if (!read.ok && !read.skipped && A.readTreasure) {
-      const tr = await A.readTreasure(bitmap);
+      const tr = await A.readTreasure(m.bitmap && A.image ? A.image() : bitmap);
       if (tr.ok && mine === newest) {
         answer({ read: { ok: true, treasure: true } });
-        answer({ state: 'used', asked: A.useTreasure() });
+        answer({ state: 'used', asked: A.useTreasure(undefined, reuse) });
         return;
       }
     }
@@ -158,7 +157,7 @@
     // The newest picture wins: an older one still being read is left.
     if (!read.ok || mine !== newest) return;
     A.useReading();
-    if (A.langBoard) A.langBoard(bitmap);
+    if (A.langBoard) A.langBoard(m.bitmap && A.image ? A.image() : bitmap);
     lastBoardAt = Date.now();
     answer({ state: 'used' });
     // Door cards or a decision row show only on the board itself, never
@@ -168,17 +167,15 @@
     // advised again). The board is advised as it is.
     if (m.treasureView && read.controls) {
       if (A.giftsDone) A.giftsDone();
-      if (A.ask()) answer({ asked: true });
+      if ((m.bitmap && A.askCached ? A.askCached() : A.ask())) answer({ asked: true });
       return;
     }
     // The board behind a Warden's Treasure: the gift advice uses it.
-    // View Prison Status, read from the picture, where the log's counts
-    // missed the Treasure (report 325).
     if (m.treasureView || read.statusView) {
-      if (A.useTreasure('view')) answer({ asked: true });
+      if (A.useTreasure('view', reuse)) answer({ asked: true });
       return;
     }
-    if (A.ask()) answer({ asked: true });
+    if ((m.bitmap && A.askCached ? A.askCached() : A.ask())) answer({ asked: true });
   }
 
   // Whether Auto Screenshot Mode is running, from what follow.html says of itself
@@ -273,5 +270,6 @@
   setInterval(renderFollow, 5000);
   announce();
   renderFollow();
+  window.TartarusAuto = { receive: onPicture, cancel: () => { newest++; } };
   // #endregion
 })();

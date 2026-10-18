@@ -21,6 +21,7 @@
   // The day's swap is still open: a day has a devour or a swap, not both.
   // (An engine cached from before that rule has no canSwapNow.)
   const canSwapNow = (st) => (T.canSwapNow ? T.canSwapNow(st) : st.used.swap < st.params.swapsPerDay);
+  const hasDevourOption = T.hasDevourOption || ((st, n) => T.devourOptions(st, n).length > 0);
 
   // Strategy weights. Values are in "tier value" units, where an inmate of
   // tier t is worth tierBase^t. tools/strategy-sim.js tuned these by
@@ -81,7 +82,7 @@
   };
   const paramsFor = (st) => PROFILES[st.params.rewards ? 'rewards' : 'notools'];
 
-  const withDefaults = (p) => Object.assign({}, DEFAULTS, p || {});
+  const withDefaults = (p) => ({ ...DEFAULTS, ...p });
 
   // Measured Rainbows per run for sets of up to 4 instruments held from day
   // 1 (js/tool-combos.js, from the lab's combos mode). Without it, the
@@ -139,37 +140,53 @@
 
   // ---------- Chain math ----------
 
-  // Everything a decision needs, computed once per position.
-  function context(st, params) {
-    const P = withDefaults(params);
-    const chain = T.FOOD_CHAIN;
-    const eats = BEASTS.map((b) => chain[b].map(beastIndex));
-    const skewer = has(st, 'skewer');
+  // Diets depend on just two instruments, not on the changing board. Keep
+  // the four variants immutable so contexts cannot corrupt later decisions.
+  const diets = new Map();
+  function dietFor(skewer, crown) {
+    const key = (skewer ? 1 : 0) | (crown ? 2 : 0);
+    if (diets.has(key)) return diets.get(key);
+    const eats = BEASTS.map((b) => T.FOOD_CHAIN[b].map(beastIndex));
     if (skewer) eats[RAT] = eats[RAT].concat(RAT);
-    // What each beast counters: under Cage Fight it can eat those at a
-    // lower rarity too (the Crown's other beasts only at its own).
+    // Countered beasts can be eaten at lower rarities in Cage Fight; the
+    // Crown's extra meals apply only at the eater's own rarity.
     const counters = eats.map((list) => list.slice());
+    if (crown) eats[LION] = [0, 1, 2, 3];
+    const second = T.SECOND_MEAL || {};
+    const withSecond = (diet) => diet.map((list, b) => [...new Set(list.concat((second[BEASTS[b]] || []).map(beastIndex)))]);
+    const immutable = (diet) => Object.freeze(diet.map((list) => Object.freeze(list)));
+    const out = {
+      eats: immutable(eats),
+      counters: immutable(counters),
+      eatsHigh: immutable(withSecond(eats)),
+      countersHigh: immutable(withSecond(counters)),
+    };
+    diets.set(key, out);
+    return out;
+  }
+
+  // Everything a decision needs, computed once per position.
+  function context(st, params, policy) {
+    const P = policy ? policy.P : withDefaults(params);
+    const skewer = has(st, 'skewer');
     // The Iron Crown of the Prison King: a Lion eats any beast.
     const crown = has(st, 'crown');
-    if (crown) eats[LION] = [0, 1, 2, 3];
     // The Elephant-Foot Maul: a Mammoth eats what it counters at a higher
     // rarity too, and rises to 2 tiers above its meal.
     const maul = has(st, 'maul');
-    // From params.doubleEatTier up (every rarity since 2026-10-17), Mammoths
-    // and Lions also eat their second meal (an engine cached from before has
-    // none).
-    const second = T.SECOND_MEAL || {};
-    const withSecond = (diet) => diet.map((list, b) => [...new Set(list.concat((second[BEASTS[b]] || []).map(beastIndex)))]);
-    const eatsHigh = withSecond(eats);
-    const countersHigh = withSecond(counters);
+    // From Legendary up (params.doubleEatTier), Mammoths and Lions also eat
+    // their second meal (an engine cached from before has none).
+    const { eats, counters, eatsHigh, countersHigh } = dietFor(skewer, crown);
     // Under Cage Fight, both meals at every rarity.
     const doubleFrom = T.cageFight && T.cageFight(st) ? 0 : Number.isFinite(st.params.doubleEatTier) ? st.params.doubleEatTier : T.SECOND_MEAL ? T.DEFAULT_PARAMS.doubleEatTier : RAINBOW;
-    const v = [0, 1, 2, 3, 4, 5].map((t) => P.tierBase ** t);
-    // The rarity odds behind a door: the Sorting Hook keeps out Normals.
-    const doorWeights = st.params.tierWeights.slice();
-    if (has(st, 'hook') && doorWeights.slice(1).some((x) => x > 0)) doorWeights[0] = 0;
-    const openDist = normalize(doorWeights);
-    // With the vault full (T.VAULT_SLOTS), a would-be Rainbow stays Supreme.
+    const v = policy ? policy.v : [0, 1, 2, 3, 4, 5].map((t) => P.tierBase ** t);
+    let openDist;
+    if (policy) openDist = has(st, 'hook') ? policy.hookDist : policy.openDist;
+    else {
+      const doorWeights = st.params.tierWeights.slice();
+      if (has(st, 'hook') && doorWeights.slice(1).some((x) => x > 0)) doorWeights[0] = 0;
+      openDist = normalize(doorWeights);
+    }
     const vaultFull = !!T.VAULT_SLOTS && st.vault.length >= T.VAULT_SLOTS;
     const R = vaultFull ? v[T.SUPREME] : v[RAINBOW] * P.rainbowMult;
     const sealed = st.cells.filter((c) => c.sealed).length;
@@ -179,11 +196,9 @@
     // Two tiers for every inmate on the block (Usurpation IV), and for a random one.
     const allLift2 = board.reduce((sum, c) => sum + (c.inmate.tier + 2 >= RAINBOW ? R : v[c.inmate.tier + 2]) - v[c.inmate.tier], 0);
     const goal = st.objective && st.objective.id === 'walk' && !st.milestone && st.params.rewards ? T.OBJECTIVES.walk.need - st.objective.progress : 0;
-    // Undercurrents: the Prison Incidents it still needs, while it pays a tool.
     const incidents = st.objective && st.objective.id === 'incident' && !st.milestone && st.params.rewards && T.OBJECTIVES.incident ? T.OBJECTIVES.incident.need - st.objective.progress : 0;
-    // Survival of the Fittest: the consumes (each bite) it still needs.
     const consumes = st.objective && st.objective.id === 'consume' && !st.milestone && st.params.rewards && T.OBJECTIVES.consume ? T.OBJECTIVES.consume.need - st.objective.progress : 0;
-    return {
+    const ctx = {
       st,
       P,
       eats,
@@ -234,11 +249,26 @@
       consumesLeft: consumes,
       scratchExtra: 1 + (st.params.scratchStacksBase ? 1 : 0),
       openDist,
-      openValue: openDist.reduce((sum, p, t) => sum + p * v[t], 0),
+      openValue: policy ? has(st, 'hook') ? policy.hookValue : policy.openValue : openDist.reduce((sum, p, t) => sum + p * v[t], 0),
       // The game's Cancel: a chain can stop after any bite.
       chainStop: T.canStopChain ? T.canStopChain(st) : false,
-      memo: new Map(),
+      memo: null,
+      chainCache: policy ? policy.chainCache : null,
     };
+    // Simple chains are cheaper to compute locally. Share only populated
+    // boards with branching chain rules, where repeated subproblems dominate.
+    if (ctx.chainCache && !(board.length >= 4 && (ctx.fight || ctx.revenge || ctx.saw || ctx.whip || ctx.collar))) ctx.chainCache = null;
+    if (ctx.chainCache) {
+      const mask = (ctx.saw ? 1 : 0) | (ctx.whip ? 2 : 0) | (ctx.muzzle ? 4 : 0) | (ctx.skewer ? 8 : 0) | (ctx.crown ? 16 : 0) | (ctx.maul ? 32 : 0) | (ctx.collar ? 64 : 0) | (ctx.revenge ? 128 : 0) | (ctx.fight ? 256 : 0) | (ctx.chainStop ? 512 : 0);
+      const key = mask + ':' + (Object.is(R, -0) ? '-0' : R);
+      let memo = ctx.chainCache.tables.get(key);
+      if (!memo) {
+        if (ctx.chainCache.tables.size >= 256) clearChainCache(ctx.chainCache, true);
+        ctx.chainCache.tables.set(key, memo = new Map());
+      }
+      ctx.memo = memo;
+    } else ctx.memo = new Map();
+    return ctx;
   }
 
   // Tier odds for a swapped-in inmate, after Hangman's Noose, and above the
@@ -289,10 +319,18 @@
   // chain ends and it keeps its tier, and with the game's Cancel it also
   // stops when no meal is worth eating (stopMargin).
   function feed(ctx, t, b, comp, crowd) {
+    // Most chains end without a meal. No memo key is needed for that leaf;
+    // only Cage Fight and the Maul can look beyond the eater's own tier.
+    if (!ctx.fight && !(ctx.maul && b === MAMMOTH)) {
+      let meal = false;
+      for (const f of ctx.eatsAt(t)[b]) if (comp[t * 4 + f]) { meal = true; break; }
+      if (!meal) return ctx.v[t];
+    }
     let key = `${t}${b}${ctx.muzzle ? `m${crowd}` : ''}`;
     for (let i = ctx.fight ? 0 : t * 4; i < 20; i++) key += String.fromCharCode(48 + comp[i]);
     const hit = ctx.memo.get(key);
-    if (hit !== undefined) return hit;
+    if (hit !== undefined) { if (ctx.chainCache) ctx.chainCache.hits++; return hit; }
+    if (ctx.chainCache) ctx.chainCache.misses++;
     let out = -Infinity;
     // Under Cage Fight, countered meals of a lower rarity too.
     for (let mt = ctx.fight ? 0 : t; mt <= topMeal(ctx, t, b); mt++) {
@@ -304,6 +342,10 @@
       }
     }
     if (out === -Infinity || (ctx.chainStop && out - ctx.v[t] < ctx.P.stopMargin)) out = ctx.v[t];
+    if (ctx.chainCache) {
+      if (ctx.chainCache.size >= 8192) clearChainCache(ctx.chainCache, false);
+      ctx.chainCache.size++;
+    }
     ctx.memo.set(key, out);
     return out;
   }
@@ -410,26 +452,25 @@
 
   // ---------- Valuing positions and moves ----------
 
-  // How ready the block is for chains: at each tier, the share of beasts an
-  // eater could re-roll into and still find a meal there, weighted by tier.
-  function stair(ctx, comp) {
-    let value = 0;
-    for (let t = 0; t < RAINBOW; t++) {
-      let fed = 0;
-      for (let b = 0; b < 4; b++) if (ctx.eatsAt(t)[b].some((f) => comp[t * 4 + f] > 0)) fed += 1;
-      value += (fed / 4) * ctx.v[t];
-    }
-    return value;
-  }
-
   // Change in readiness from adding (+1) or removing (-1) one inmate.
   function stairDelta(ctx, comp, tier, beast, sign) {
     if (!ctx.P.wStair || tier >= RAINBOW) return 0;
-    const before = stair(ctx, comp);
-    comp[tier * 4 + beast] += sign;
-    const after = stair(ctx, comp);
-    comp[tier * 4 + beast] -= sign;
-    return ctx.P.wStair * (after - before);
+    const offset = tier * 4;
+    const count = comp[offset + beast];
+    if ((count > 0) === (count + sign > 0)) return 0;
+    // Readiness changes only for beasts whose only available food is the
+    // kind being added or removed. The composition itself need not change.
+    let changed = 0;
+    for (const foods of ctx.eatsAt(tier)) {
+      let eatsChanged = false;
+      let otherMeal = false;
+      for (const food of foods) {
+        if (food === beast) eatsChanged = true;
+        else if (comp[offset + food] > 0) otherMeal = true;
+      }
+      if (eatsChanged && !otherMeal) changed += sign;
+    }
+    return ctx.P.wStair * (changed / 4) * ctx.v[tier];
   }
 
   // Expected readiness change from a new inmate with tier odds `dist`.
@@ -649,6 +690,10 @@
     const swapLeft = canSwapNow(st);
     let fresh = null;
     const freshNow = () => (fresh === null ? (fresh = freshValue(ctx, tagged(ctx, ctx.openDist), board.comp, board.crowd + 1, swapLeft)) : fresh);
+    const worth = eventWorth(ctx, board.comp);
+    const pool = st.eventPool || T.EVENT_POOL;
+    let averageEvent = null;
+    const anyEvent = () => (averageEvent === null ? (averageEvent = pool.reduce((sum, id) => sum + worth[id](), 0) / pool.length) : averageEvent);
     const out = [];
     const range = Math.min(st.params.patrolRange || T.DEFAULT_PARAMS.patrolRange, T.CELL_COUNT - 1);
     for (const n of T.patrolOptions(st)) {
@@ -689,11 +734,9 @@
         if (ctx.fire && P.wFire && ctx.sealed > 1) score += P.wFire * 0.35 * P.wOpen * ctx.openValue;
         const who = !shown && c.atLeast ? `a ${T.tierName(c.atLeast)} or better inmate (the "Treasure" Hunt left this door dark)` : 'a new inmate';
         why = `${who}, who may consume today`;
-        const worth = eventWorth(ctx, board.comp);
-        const pool = st.eventPool || T.EVENT_POOL;
-        const anyEvent = () => pool.reduce((sum, id) => sum + worth[id](), 0) / pool.length;
-        // Events show as they appear (no door hides one unseen); one whose
-        // kind the player can't see is any of them, evenly.
+        // An event shows once the warden has walked past its door. A door
+        // not yet passed may still hide one; a seen event whose kind the
+        // player can't see is any of them, evenly.
         if (c.event && c.eventKnown === false) {
           score += anyEvent();
           why = 'a special event waits behind the door';
@@ -716,10 +759,8 @@
         }
         // An event waiting in an open cell goes off when the warden walks in.
         if (c.event) {
-          const worth = eventWorth(ctx, board.comp);
-          const pool = st.eventPool || T.EVENT_POOL;
           if (c.eventKnown === false || !worth[c.event]) {
-            score += pool.reduce((sum, id) => sum + worth[id](), 0) / pool.length;
+            score += anyEvent();
             why = `a special event waits in the cell with its ${T.describe(c.inmate)}`;
           } else {
             score += worth[c.event]();
@@ -846,7 +887,7 @@
     let value = st.vault.length * ctx.R;
     for (const c of st.cells) {
       if (c.sealed || !c.inmate) continue;
-      value += ctx.v[c.inmate.tier] * (T.devourOptions(st, c.n).length ? 1.25 : 1);
+      value += ctx.v[c.inmate.tier] * (hasDevourOption(st, c.n) ? 1.25 : 1);
     }
     return value;
   }
@@ -899,10 +940,16 @@
       let value = 0;
       const samples = id === 'ring' || id === 'horn' ? 3 : 1;
       for (let i = 0; i < samples; i++) {
-        const trial = clone(st);
+        const trial = forkTrial(st);
         trial.rng = (random() * 4294967296) >>> 0;
         if (!T.choose(trial, id).ok) continue;
-        value += boardValue(trial, context(trial, P));
+        // A gift's board score uses only tier values and the Rainbow value.
+        // The tier scale stays fixed; challenge shipping constraints must
+        // still be evaluated after the gift has resolved.
+        value += boardValue(trial, {
+          v: ctx.v,
+          R: T.VAULT_SLOTS && trial.vault.length >= T.VAULT_SLOTS ? ctx.v[T.SUPREME] : ctx.v[RAINBOW] * P.rainbowMult,
+        });
       }
       value /= samples;
       if (!best || value > best.value) best = { id, value };
@@ -1019,17 +1066,19 @@
   // ---------- The strategy ----------
 
   // The move the strategy would play now, as an action object.
-  function decide(st, params, random) {
-    const ctx = context(st, params || paramsFor(st));
-    const P = ctx.P;
-    const roll = random || Math.random;
+  function decide(st, params, random, policy) {
     if (st.phase === 'ended') return null;
+    let P = policy ? policy.P : params || paramsFor(st);
+    const roll = random || Math.random;
     if (st.pending.length) {
       const choice = st.pending[0];
-      if (choice.kind === 'gift') return { type: 'choose', id: pickGift(st, ctx, choice.options, roll) };
-      if (choice.kind === 'tool' && wantsReroll(st, P, choice.options)) return { type: 'reroll' };
-      return { type: 'choose', id: pickTool(st, P, choice.options) };
+      if (choice.kind === 'gift') return { type: 'choose', id: pickGift(st, context(st, P, policy), choice.options, roll) };
+      const weights = policy ? policy.P : withDefaults(P);
+      if (choice.kind === 'tool' && wantsReroll(st, weights, choice.options)) return { type: 'reroll' };
+      return { type: 'choose', id: pickTool(st, weights, choice.options) };
     }
+    const ctx = context(st, P, policy);
+    P = ctx.P;
     // A chain waiting for a pick takes the meal worth the most, or stops
     // (the game's Cancel) when none is worth eating.
     if (st.chaining) {
@@ -1100,11 +1149,13 @@
 
   // Plays a run to the end with the strategy. `onMove` sees each move.
   function playout(st, params, random, onMove) {
+    return runPlayout(st, params, random, onMove, null);
+  }
+
+  function runPlayout(st, params, random, onMove, policy) {
     const roll = random || Math.random;
-    // Rainbows can't grow past a full vault: the playout is done.
-    const full = () => T.VAULT_SLOTS && st.vault.length >= T.VAULT_SLOTS;
-    for (let guard = 0; st.phase !== 'ended' && guard < 2000 && !full(); guard++) {
-      const action = decide(st, params, roll);
+    for (let guard = 0; st.phase !== 'ended' && guard < 2000 && !(T.VAULT_SLOTS && st.vault.length >= T.VAULT_SLOTS); guard++) {
+      const action = decide(st, params, roll, policy);
       if (!action) break;
       const result = apply(st, action);
       if (onMove) onMove(action, result, st);
@@ -1116,12 +1167,57 @@
   // ---------- Monte Carlo solver ----------
 
   // A copy without the log, which playouts don't need.
+  // Engine states contain only JSON data. Copy it directly instead of
+  // serializing and parsing thousands of states (and never change the input).
+  function copyData(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(copyData);
+    const out = {};
+    for (const key of Object.keys(value)) out[key] = copyData(value[key]);
+    return out;
+  }
+
   function clone(st) {
-    const log = st.log;
-    st.log = [];
-    const copy = JSON.parse(JSON.stringify(st));
-    st.log = log;
+    const copy = {};
+    for (const key of Object.keys(st)) copy[key] = key === 'log' ? [] : copyData(st[key]);
     return copy;
+  }
+
+  // Private trial states never escape. Engine actions only read the rules
+  // and contract definitions: share those, copy all changing game data.
+  // Public clone()/playout() retain their fully independent state semantics.
+  function forkTrial(st) {
+    const copy = {};
+    for (const key of Object.keys(st)) {
+      if (key === 'log') copy[key] = [];
+      else if (key === 'params') copy[key] = st[key];
+      else if (key === 'challenge' && st.challenge) {
+        const challenge = {};
+        for (const field of Object.keys(st.challenge)) challenge[field] = field === 'contracts' ? st.challenge[field] : copyData(st.challenge[field]);
+        copy[key] = challenge;
+      } else copy[key] = copyData(st[key]);
+    }
+    return copy;
+  }
+
+  function clearChainCache(cache, removeTables) {
+    for (const memo of cache.tables.values()) memo.clear();
+    if (removeTables) cache.tables.clear();
+    cache.size = 0; cache.clears++;
+  }
+
+  function preparePolicy(st, params, chainCache) {
+    const P = withDefaults(params || paramsFor(st));
+    const v = [0, 1, 2, 3, 4, 5].map((t) => P.tierBase ** t);
+    const openDist = normalize(st.params.tierWeights);
+    const hookWeights = st.params.tierWeights.slice();
+    if (hookWeights.slice(1).some((x) => x > 0)) hookWeights[0] = 0;
+    const hookDist = normalize(hookWeights);
+    if (chainCache && (!Object.is(chainCache.tierBase, P.tierBase) || !Object.is(chainCache.stopMargin, P.stopMargin))) {
+      clearChainCache(chainCache, true);
+      chainCache.tierBase = P.tierBase; chainCache.stopMargin = P.stopMargin;
+    }
+    return { P, v, openDist, hookDist, openValue: openDist.reduce((sum, p, t) => sum + p * v[t], 0), hookValue: hookDist.reduce((sum, p, t) => sum + p * v[t], 0), chainCache };
   }
 
   // Re-rolls everything the player can't see: the game's dice, and any
@@ -1275,31 +1371,40 @@
     const random = rng32(o.stream ? (o.seed ^ Math.imul(o.stream, 0x9e3779b1)) >>> 0 : o.seed);
     const pick = list.length ? decide(clone(base), o.params, rng32(o.seed ^ 0x5bd1e995)) : null;
     const goal = 'rainbows';
-    const rows = list.map((c) => ({ label: c.label, action: c.action, kind: c.kind || null, vals: [], best: 0, policy: sameAction(c.action, pick) }));
+    const rows = list.map((c) => ({ label: c.label, action: c.action, kind: c.kind || null, extra: c.extra, vals: [], pass: 0, points: 0, best: 0, policy: sameAction(c.action, pick) }));
     let round = 0;
+    const chainCache = { tables: new Map(), size: 0, hits: 0, misses: 0, clears: 0 };
     const result = () => summarize(rows, round, o.rollouts, goal);
     return {
       rows,
-      step(budgetMs) {
+      chainInfo: () => ({ entries: chainCache.size, partitions: chainCache.tables.size, hits: chainCache.hits, misses: chainCache.misses, clears: chainCache.clears }),
+      step(budgetMs, progressOnly = false) {
         const stop = Date.now() + (budgetMs || 50);
+        // Refresh between slices so caller edits to strategy overrides are
+        // observed. No callback or mutable rule data is exposed in a slice.
+        const policy = round < o.rollouts && rows.length > 1 ? preparePolicy(base, o.params, o.chainCache === false ? null : chainCache) : null;
         while (round < o.rollouts && rows.length > 1 && Date.now() < stop) {
           const seed = (random() * 4294967296) >>> 0;
           for (const row of rows) {
-            const trial = clone(base);
+            const trial = forkTrial(base);
             hideFuture(trial, seed);
             if (!apply(trial, row.action).ok) {
               row.vals.push(NaN);
               continue;
             }
             const roll = rng32(seed ^ 0x9e3779b9);
-            playout(trial, o.params, roll);
-            row.vals.push(trial.vault.length);
-            // Second measure: the best rarity reached.
-            row.best += Math.max(0, ...trial.cells.filter((c) => !c.sealed && c.inmate).map((c) => c.inmate.tier), trial.vault.length ? RAINBOW : 0);
+            runPlayout(trial, o.params, roll, null, policy);
+            {
+              row.vals.push(trial.vault.length);
+              // Second measure: the best rarity reached.
+              row.best += Math.max(0, ...trial.cells.filter((c) => !c.sealed && c.inmate).map((c) => c.inmate.tier), trial.vault.length ? RAINBOW : 0);
+            }
           }
           round += 1;
         }
-        return result();
+        // Raw workers send samples for the page to merge and rank. Sorting
+        // and calculating paired margins here would immediately be repeated.
+        return progressOnly ? { done: round >= o.rollouts || rows.length <= 1, rounds: round, goal } : result();
       },
     };
   }

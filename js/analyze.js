@@ -13,6 +13,15 @@
   const S = window.TartarusSolver;
   const B = window.TartarusBoard;
   const SHARE = window.TartarusLive || null;
+  const FAST_DESKTOP = !!(window.TartarusDesktop && window.TartarusDesktop.fast);
+  const desktopListeners = new Set();
+  let desktopStale = false;
+  let desktopProblems = [];
+  let desktopReading = null;
+  let desktopLastRead = null;
+  let desktopWindowVisible = !FAST_DESKTOP;
+  const desktopHidden = () => FAST_DESKTOP && !desktopWindowVisible;
+  const desktopChanged = () => { for (const fn of desktopListeners) fn(); };
   // The event kinds and steps the live collector (worker/) accepts.
   const COLLECTOR_EVENTS = ['unknown', 'chain', 'execution'];
   const COLLECTOR_STEPS = ['patrol', 'manage', 'event', 'choice'];
@@ -47,12 +56,8 @@
   const PLAYOUT_BUDGET = 9600; // playouts per check, shared across the options
   const LIVE_MIN = 150; // playouts per option before the live check can lead
   const SWITCH_MIN = 0.05; // Rainbows a live pick must gain over the strategy's to replace it
-  // The check ends early once the leader is ahead of every other move by
-  // CLEAR_SE of its paired margins (after LIVE_MIN playouts each), and in any
-  // case after CHECK_MS, with what it has then. The user: a decision within a
-  // second of the picture, "faster is way better".
-  const CLEAR_SE = 3;
-  const CHECK_MS = 700;
+  // Full-budget results only; next-state preparation hides that wait when
+  // the actual screen matches an already completed or partially prepared job.
   const STEPS = ['patrol', 'manage', 'office', 'chain', 'event', 'ratway', 'choice'];
   const STEP_NAMES = { patrol: 'Which door to patrol', manage: 'After the patrol', office: 'Instigate or Bestow', chain: 'A meal to pick, or Cancel', event: 'A special event', ratway: 'Sewer Ratway: any cell', choice: 'A tool or gift' };
   const BEAST_KEYS = { m: 'mammoth', l: 'lion', w: 'wolf', r: 'rat' };
@@ -123,12 +128,9 @@
       // instruments: the player is asked to confirm them. Once confirmed
       // (toolsLocked), they stay for the run and aren't asked about again.
       toolsToConfirm: '',
-      toolsLocked: false,
-      // The panel's count at the last confirmation (toolsSeen) and in the
-      // last picture (toolsPanel): only a panel showing more asks again.
-      toolsSeen: 0,
-      toolsPanel: 0,
-      // Days of this run whose morning offered a door short (see scanToModel).
+      toolsConfirmed: null,
+      toolsPanelSlots: 0,
+      toolsOffer: null,
       shortDays: [],
       // The game shows no Replace / Consume card now (read from a screenshot):
       // that move isn't advised, and the other one still can be. noHunt: no
@@ -364,6 +366,11 @@
     m.walkTiles = st.objective ? st.objective.progress : 0;
     m.milestone = !!st.milestone;
     m.tools = st.tools.slice();
+    if (prev && st.day >= prev.day && toolSet(m.tools) === toolSet(prev.tools)) {
+      m.toolsConfirmed = prev.toolsConfirmed || null;
+      m.toolsPanelSlots = prev.toolsPanelSlots || 0;
+      m.toolsOffer = prev.toolsOffer || null;
+    }
     m.vault = st.vault.map((v) => v.beast);
     m.cells = st.cells.map((c) => {
       if (c.n === T.OFFICE) return officeCell();
@@ -439,6 +446,7 @@
 
   function save() {
     store.set(KEY, { model, selected, shot, via: via && Object.assign({}, via, { touched: [...via.touched] }) });
+    desktopChanged();
   }
 
   function shareHeld() {
@@ -457,7 +465,8 @@
   // after a screenshot.
   const unsureTools = () => (shotTools.length ? ` The reader wasn’t sure of ${shotTools.map((n) => `the ${n}`).join(' and ')}: check your instruments too.` : '');
 
-  function changed() {
+  function changed(options) {
+    if (!options || !options.keepForecast) stopForecast();
     save();
     render();
   }
@@ -468,48 +477,182 @@
 
   // ---------- Analysis ----------
 
-  const solver = { workers: null, failed: false, id: 0, st: null, key: '', instant: null, result: null, shares: null, meta: null, goal: '' };
-  // The live check runs on a worker for every core but one, or on fewer when
-  // the page is told (setCores: the desktop app's processor setting), each
-  // playing its share of the rounds with its own dice. It runs for a few
-  // seconds after each board. A minute after the last check the workers are
-  // let go, and their memory with them; the next check starts new ones.
-  const MOST_WORKERS = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
-  const WORKERS_IDLE_MS = 60000;
-  let coreCap = 0; // 0: every core but one
-  const workerCount = () => (coreCap ? Math.min(MOST_WORKERS, coreCap) : MOST_WORKERS);
-  let idleTimer = 0;
-  const poolBusy = () => !!(solver.workers && solver.shares && !solver.shares.every((s) => s.done));
-  function releaseWorkers() {
-    clearTimeout(idleTimer);
-    idleTimer = 0;
-    if (!solver.workers) return;
-    for (const w of solver.workers) w.terminate();
-    solver.workers = null;
-    solver.shares = null;
-  }
-  // Let the workers go once they've been idle a minute; a check still
-  // playing keeps them.
-  function idleLater() {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => (poolBusy() ? idleLater() : releaseWorkers()), WORKERS_IDLE_MS);
-  }
-  // How many workers the live check may use (0: every core but one). A
-  // check under way starts over on the new number.
-  function setCores(n) {
-    coreCap = Math.max(0, Math.floor(Number(n) || 0));
-    if (solver.workers && solver.workers.length !== workerCount()) {
-      const again = poolBusy() && solver.st ? { id: solver.id, st: solver.st, rollouts: solver.target } : null;
-      releaseWorkers();
-      if (again) startCheck(again.id, again.st, again.rollouts);
+  const solver = { workers: null, failed: false, id: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
+  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=f35a50a:${SCRIPT_QUERY}:budget=${PLAYOUT_BUDGET}` }) : null;
+  const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
+    families: new Map(),
+    stats: { generated: 0, completed: 0, hits: 0, resumed: 0, cancelled: 0, reused: 0, familyHits: 0, familyResumed: 0 } };
+  let forecastEnabled = !FAST_DESKTOP;
+  const rolloutTarget = (st) => clamp(Math.round(PLAYOUT_BUDGET / Math.max(1, S.candidates(st).length)), 400, 1600);
+  // Recognition/confirmation state is saved with the board, but cannot
+  // change a Monte Carlo result for the same actual instruments and rules.
+  const resultKey = (m, target) => {
+    const input = { ...normalize(m), toolsToConfirm: '' };
+    delete input.toolsConfirmed; delete input.toolsPanelSlots; delete input.toolsOffer;
+    return window.TartarusSolverCache.key(input, target);
+  };
+  const makeShares = (target) => solver.workers.map((_, k, all) => ({ target: Math.floor(target / all.length) + (k < target % all.length ? 1 : 0), rounds: 0, done: false, rows: null }));
+  function stopForecast(keepActive = false) {
+    clearTimeout(forecast.timer); forecast.timer = 0;
+    forecast.generation++;
+    if (!keepActive && (forecast.active || forecast.plan)) {
+      if (solver.workers) for (const worker of solver.workers) worker.postMessage({ id: `forecast-cancel:${++forecast.sequence}`, cancel: true });
+      forecast.stats.cancelled++;
     }
-    return workerCount();
+    forecast.active = null; forecast.plan = null; forecast.queue = []; forecast.seen.clear(); forecast.paused = false;
   }
+  function pauseForecast() {
+    forecast.paused = true;
+    if (forecast.active && solver.workers) for (const worker of solver.workers) worker.postMessage({ id: forecast.active.id, pause: true });
+  }
+  function forecastInfo() {
+    const active = forecast.active;
+    return { ...forecast.stats, queued: forecast.queue.length, planning: !!forecast.plan, running: !!active, paused: forecast.paused,
+      rounds: active ? active.shares.reduce((sum, s) => sum + s.rounds, 0) : 0, target: active ? active.target : 0,
+      ready: forecast.ready.size, families: forecast.families.size, enabled: forecastEnabled };
+  }
+  const patrolFamilyKey = (m, target) => m.mode === 'drill' && m.step === 'patrol' ? resultKey({ ...m, dest: [] }, target) : '';
+  function patrolForecast(m, st, target) {
+    const key = patrolFamilyKey(m, target), family = key && forecast.families.get(key);
+    if (!family || !window.TartarusForecast) return null;
+    const result = window.TartarusForecast.patrolResult(S, st, family.rows, target, family.seed);
+    if (!result) return null;
+    forecast.families.delete(key); forecast.families.set(key, family);
+    forecast.stats.familyHits++;
+    return result;
+  }
+  function queueForecast() {
+    if (!forecastEnabled || !solverCache || solver.failed || !solver.workers || !window.TartarusCapture?.agreed() || !fresh() || !settled() || desktopStale) return;
+    stopForecast();
+    const generation = forecast.generation, base = S.clone(model), state = solver.st, rec = recommendation();
+    if (!rec) return;
+    forecast.timer = setTimeout(() => {
+      forecast.timer = 0;
+      if (generation === forecast.generation) planForecast(base, state, rec.action, 1);
+    }, 50);
+  }
+  function planForecast(base, state, action, depth) {
+    if (!forecastEnabled || forecast.paused || !solver.workers || forecast.seen.size >= 8) { runForecast(); return; }
+    const id = `forecast-plan:${++forecast.sequence}`;
+    forecast.plan = { id, base, depth };
+    solver.workers[0].postMessage({ id, predict: true, state, action, options: { samples: 48, limit: depth === 1 ? 4 : 1, seed: forecast.sequence * 7919, autoDay: true, patrolFamilies: true } });
+  }
+  // Use the same model conversion as the real reader: card restrictions,
+  // unknown events and hidden-door knowledge must match, not just portraits.
+  function forecastModels(st, base) {
+    if (st.pending.length || st.phase === 'event' || st.challenge?.window) return [];
+    const moves = S.candidates(st), chaining = !!st.chaining;
+    const cells = st.cells.map((c) => ({ n: c.n, kind: c.n === 0 ? 'office' : c.sealed ? 'locked' : c.inmate ? 'inmate' : 'empty',
+      beast: c.inmate?.beast, tier: c.inmate?.tier, conf: 1, event: c.seen !== false && !!c.event, nest: !!c.nest,
+      jaws: !!c.inmate && T.devourOptions(st, c.n).length > 0 }));
+    const reading = { cells, warden: { cell: st.position, conf: 1 }, days: { days: st.maxDays - st.day },
+      doors: st.phase === 'patrol' && !st.ratway ? { cells: st.destinations, conf: 1 } : null,
+      tools: { tools: st.tools.map((id) => ({ id, sim: id, name: T.toolName(id), conf: 1 })) }, chromatic: { count: st.vault.length },
+      chain: chaining ? { targets: T.chainOptions(st).map((o) => o.cell) } : null,
+      decision: chaining || st.phase === 'patrol' && !st.ratway ? null : { title: true, end: true,
+        office: st.phase === 'office', ratway: !!st.ratway,
+        consume: moves.some((o) => o.action.type === 'devour'), replace: moves.some((o) => o.action.type === 'swap'), hunt: moves.some((o) => o.action.type === 'hunt') } };
+    const models = [];
+    // The live game can offer Consume after Replace. The engine keeps it
+    // opt-in; prepare that exact card state as well when a meal is present.
+    if (reading.decision && !chaining && st.used.swap > 0 && !st.used.devour && T.devourOptions(st, st.position).length) {
+      models.push(scanToModel({ ...reading, decision: { ...reading.decision, consume: true } }, base).model);
+    }
+    models.push(scanToModel(reading, base).model);
+    return models;
+  }
+  function receivePredictions(m) {
+    const plan = forecast.plan;
+    if (!plan || m.id !== plan.id) return;
+    forecast.plan = null;
+    const nextTasks = [];
+    for (const prediction of m.predictions) {
+      let models;
+      try { models = forecastModels(prediction.state, plan.base); } catch { continue; }
+      models.forEach((next) => {
+        next = normalize(next);
+        const { st, problems } = buildState(next);
+        if (problems.length) return;
+        const target = rolloutTarget(st), key = resultKey(next, target);
+        if (key === solver.cacheKey || forecast.seen.has(key) || forecast.seen.size >= 8) return;
+        forecast.seen.add(key);
+        const cached = solverCache.get(key, target);
+        nextTasks.push({ key, model: next, state: st, target, depth: plan.depth, cached, patrolFamily: prediction.patrolFamily });
+        if (!cached) forecast.stats.generated++;
+      });
+    }
+    forecast.queue.push(...nextTasks);
+    runForecast();
+  }
+  function runForecast() {
+    if (!forecastEnabled || forecast.active || forecast.plan || forecast.paused || !solver.workers || !forecast.queue.length) return;
+    let task;
+    while ((task = forecast.queue.shift())) {
+      if (!task.cached) break;
+      forecast.stats.reused++;
+      // A cached first step still has a successor to prepare. Otherwise each
+      // confirmed move could stop at the old horizon instead of extending it.
+      if (extendForecast(task, task.cached)) return;
+    }
+    if (!task) return;
+    task.id = `forecast-job:${++forecast.sequence}`; task.shares = makeShares(task.target); task.meta = null;
+    task.seed = (forecast.sequence * 7919 + 1) >>> 0;
+    forecast.active = task;
+    solver.workers.forEach((worker, k) => worker.postMessage({ id: task.id, state: task.state, rollouts: task.shares[k].target,
+      stream: k, raw: true, background: true, seed: task.seed }));
+  }
+  function receiveForecast(k, m) {
+    const task = forecast.active;
+    if (!task || m.id !== task.id) return;
+    acceptShare(task.shares[k], m);
+    if (m.meta && !task.meta) task.meta = m.meta;
+    task.goal = m.goal;
+    if (!task.shares.every((s) => s.done)) return;
+    const result = summarizeShares(task);
+    solverCache.put(task.key, result, task.target);
+    if (task.patrolFamily) {
+      const key = patrolFamilyKey(task.model, task.target);
+      forecast.families.delete(key);
+      forecast.families.set(key, { rows: mergedRows(task), seed: task.seed });
+      while (forecast.families.size > 8) forecast.families.delete(forecast.families.keys().next().value);
+    }
+    forecast.ready.add(task.key);
+    while (forecast.ready.size > 256) forecast.ready.delete(forecast.ready.values().next().value);
+    forecast.stats.completed++;
+    forecast.active = null;
+    if (extendForecast(task, result)) return;
+    runForecast();
+  }
+  function extendForecast(task, result) {
+    if (forecast.paused || task.depth >= 2 || forecast.seen.size >= 8) return false;
+    const rec = recommendation(task.state, S.instant(task.state), result);
+    if (!rec) return false;
+    planForecast(task.model, task.state, rec.action, task.depth + 1);
+    return true;
+  }
+  function solverMessage(k, m) {
+    if (m.predictions) receivePredictions(m);
+    else if (forecast.active && m.id === forecast.active.id) receiveForecast(k, m);
+    else if (m.id === solver.forecastAlias?.from && solver.forecastAlias.to === solver.id) {
+      const indices = solver.forecastAlias.indices;
+      onShare(k, { ...m, id: solver.id, rows: indices ? indices.map((i) => m.rows[i]) : m.rows, meta: indices ? null : m.meta });
+    } else onShare(k, m);
+  }
+  function cacheCompleted() {
+    if (solverCache && solver.cacheKey && solver.result) solverCache.put(solver.cacheKey, solver.result, solver.target);
+    forecast.ready.delete(solver.cacheKey);
+    queueForecast();
+  }
+  // The live check runs on a worker for every core but one, each playing its
+  // share of the rounds with its own dice. It runs for a few seconds after
+  // each board, then they all wait.
+  const WORKERS = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
 
   // fresh: a new run's instrument offer (usePick). The last run's board is
   // done with, and this one, not seen yet, isn't shared: the next board
   // starts a new run.
-  function ask(quiet, fresh) {
+  function ask(quiet, fresh, reuse) {
+    desktopStale = false;
     // A Warden's Treasure waiting for the board behind it: no advice yet.
     if (model.treasureWait) {
       solver.st = null;
@@ -547,61 +690,123 @@
       flags = new Set();
     }
     applied = null;
+    const key = modelKey();
+    const options = S.candidates(st).length;
+    const rollouts = clamp(Math.round(PLAYOUT_BUDGET / Math.max(1, options)), 400, 1600);
+    const cacheKey = solverCache ? resultKey(model, rollouts) : '';
+    let cached = null;
+    if (reuse) {
+      if (solverCache) cached = solverCache.get(cacheKey, rollouts);
+      else if (solver.key === key && solver.result && solver.result.done) cached = solver.result;
+      if (!cached && solverCache) {
+        cached = patrolForecast(model, st, rollouts);
+        if (cached) { solverCache.put(cacheKey, cached, rollouts); forecast.ready.add(cacheKey); }
+      }
+    }
+    let predicted = !cached && reuse && forecast.active?.key === cacheKey ? forecast.active : null;
+    let patrolIndices = null;
+    const active = forecast.active;
+    if (!cached && !predicted && reuse && options > 1 && active?.patrolFamily && active.meta &&
+        patrolFamilyKey(model, rollouts) === patrolFamilyKey(active.model, active.target)) {
+      const indices = S.candidates(st).map((option) => active.meta.findIndex((row) => S.sameAction(row.action, option.action)));
+      if (indices.every((i) => i >= 0)) { predicted = active; patrolIndices = indices; forecast.stats.familyResumed++; }
+    }
+    const forecastHit = !!cached && forecast.ready.has(cacheKey);
+    stopForecast(!!predicted);
+    solver.forecastHit = forecastHit;
+    solver.forecastResumed = !!predicted;
+    if (forecastHit) forecast.stats.hits++;
+    if (predicted) forecast.stats.resumed++;
     solver.id += 1;
+    solver.forecastAlias = predicted ? { from: predicted.id, to: solver.id, indices: patrolIndices } : null;
     solver.st = st;
-    solver.key = modelKey();
-    solver.result = null;
+    solver.key = key;
+    solver.cacheKey = cacheKey;
+    solver.cached = !!cached;
+    solver.result = cached;
     try {
       solver.instant = S.instant(st);
     } catch (e) {
       solver.instant = null;
     }
-    const options = S.candidates(st).length;
-    const rollouts = clamp(Math.round(PLAYOUT_BUDGET / Math.max(1, options)), 400, 1600);
     solver.target = rollouts;
-    solver.startedAt = Date.now();
-    startCheck(solver.id, st, rollouts);
+    if (predicted) {
+      solver.shares = predicted.shares; solver.meta = predicted.meta; solver.goal = predicted.goal;
+      if (patrolIndices) {
+        for (const share of solver.shares) if (share.rows) share.rows = patrolIndices.map((i) => share.rows[i]);
+        const pick = S.decide(S.clone(st), null, S.rng32(predicted.seed ^ 0x5bd1e995));
+        const choices = S.candidates(st);
+        solver.meta = patrolIndices.map((index, i) => ({ ...predicted.meta[index], ...choices[i], policy: S.sameAction(choices[i].action, pick) }));
+      }
+      clearTimeout(mergeTimer); mergeTimer = 0;
+      solver.workers.forEach((worker, k) => { if (!predicted.shares[k].done) worker.postMessage({ from: predicted.id, id: solver.id, promote: true, indices: patrolIndices }); });
+      merge();
+    } else if (!cached) startCheck(solver.id, st, rollouts, options);
+    else {
+      clearTimeout(mergeTimer); mergeTimer = 0;
+      solver.shares = null; solver.meta = null;
+      if (solver.workers) for (const worker of solver.workers) worker.postMessage({ id: solver.id, cancel: true });
+    }
     render();
+    if (cached) queueForecast();
     if (quiet !== true) $('az-results').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     return true;
   }
 
-  function startCheck(id, st, rollouts) {
-    const state = JSON.parse(JSON.stringify(st));
+  function prepareSolverWorkers() {
     if (!solver.workers && !solver.failed) {
+      solver.workers = [];
       try {
-        solver.workers = Array.from({ length: workerCount() }, (_, k) => {
+        for (let k = 0; k < WORKERS; k++) {
           const worker = new Worker(`js/solver-worker.js${SCRIPT_QUERY}`);
-          worker.onmessage = (e) => onShare(k, e.data);
+          solver.workers.push(worker);
+          worker.onmessage = (e) => solverMessage(k, e.data);
           worker.onerror = () => {
             // Fall back to this page's thread, and redo the check.
             if (!solver.workers) return;
+            stopForecast();
             for (const w of solver.workers) w.terminate();
             solver.workers = null;
             solver.shares = null;
             solver.failed = true;
-            if (solver.st) startCheck(solver.id, solver.st, Math.min(rollouts, 300));
+            if (solver.st) startCheck(solver.id, solver.st, 300);
           };
-          return worker;
-        });
+        }
       } catch (e) {
+        for (const worker of solver.workers) worker.terminate();
         solver.failed = true;
         solver.workers = null;
       }
     }
+    return solver.workers;
+  }
+
+  function startCheck(id, st, rollouts, optionCount) {
+    // postMessage copies its payload; solve also owns its own state copy.
+    const state = Object.assign({}, st, { log: [] });
+    if ((optionCount === undefined ? S.candidates(state).length : optionCount) <= 1) {
+      // solve already performs zero playouts for zero/one option. Build its
+      // identical final result here instead of waiting for worker replies.
+      clearTimeout(mergeTimer); mergeTimer = 0;
+      solver.shares = null; solver.meta = null;
+      if (solver.workers) for (const worker of solver.workers) worker.postMessage({ id, cancel: true });
+      solver.result = S.solve(state, { rollouts, seed: (id * 7919 + 1) >>> 0 }).step(1);
+      cacheCompleted();
+      return;
+    }
+    prepareSolverWorkers();
     if (solver.workers) {
       // Each worker's share of the rounds: together they make `rollouts`.
-      const n = solver.workers.length;
       solver.meta = null;
-      solver.shares = solver.workers.map((w, k) => ({ target: Math.floor(rollouts / n) + (k < rollouts % n ? 1 : 0), rounds: 0, done: false, rows: null }));
+      solver.shares = makeShares(rollouts);
       solver.workers.forEach((w, k) => w.postMessage({ id, state, rollouts: solver.shares[k].target, stream: k, raw: true }));
-      idleLater();
       return;
     }
     const job = S.solve(state, { rollouts: Math.min(rollouts, 300), seed: (id * 7919 + 1) >>> 0 });
     const tick = () => {
       if (id !== solver.id) return;
       solver.result = job.step(12);
+      if (solver.result.done) cacheCompleted();
       renderResults();
       renderBoard();
       renderCourt();
@@ -613,35 +818,33 @@
   // A worker's new rounds for the current check. Its rows grow, and the
   // merged result is redrawn at most every 100 ms, and once all are done.
   let mergeTimer = 0;
-  function onShare(k, m) {
-    // A check that settled early keeps its answer: late rounds are dropped.
-    if (m.id !== solver.id || !solver.shares || (solver.result && solver.result.early)) return;
-    const share = solver.shares[k];
-    if (m.meta && !solver.meta) solver.meta = m.meta;
-    if (!share.rows) share.rows = m.rows.map(() => ({ vals: [], best: 0 }));
+  function acceptShare(share, m) {
+    if (!share.rows) share.rows = m.rows.map(() => ({ vals: [], pass: 0, points: 0, best: 0 }));
     m.rows.forEach((r, i) => {
       const row = share.rows[i];
       for (const v of r.vals) row.vals.push(v);
-      row.best = r.best;
+      row.pass = r.pass; row.points = r.points; row.best = r.best;
     });
-    share.rounds = m.rounds;
-    share.done = m.done;
+    share.rounds = m.rounds; share.done = m.done;
+  }
+  function onShare(k, m) {
+    if (m.id !== solver.id || !solver.shares) return;
+    const share = solver.shares[k];
+    if (m.meta && !solver.meta) solver.meta = m.meta;
+    acceptShare(share, m);
     solver.goal = m.goal;
     if (solver.shares.every((s) => s.done)) {
       clearTimeout(mergeTimer);
       merge();
-      idleLater();
     } else if (!mergeTimer) mergeTimer = setTimeout(merge, 100);
   }
 
   // The workers' rows as one: each share's rounds keep their common dice
   // across the moves, so the paired margins hold (TartarusSolver.summarize).
-  function merge() {
-    mergeTimer = 0;
-    if (!solver.shares || !solver.meta) return;
-    const rows = solver.meta.map((meta, i) => {
-      const row = Object.assign({ vals: [], best: 0 }, meta);
-      for (const s of solver.shares) {
+  function mergedRows(task) {
+    const rows = task.meta.map((meta, i) => {
+      const row = Object.assign({ vals: [], pass: 0, points: 0, best: 0 }, meta);
+      for (const s of task.shares) {
         const r = s.rows && s.rows[i];
         if (!r) continue;
         for (const v of r.vals) row.vals.push(v);
@@ -649,16 +852,18 @@
       }
       return row;
     });
-    const rounds = solver.shares.reduce((sum, s) => sum + s.rounds, 0);
-    solver.result = Object.assign(S.summarize(rows, rounds, solver.target, solver.goal), { done: solver.shares.every((s) => s.done) });
-    // Settled early: the workers stop, and their share of the processor with them.
-    if (!solver.result.done && settled() && solver.workers) {
-      for (const w of solver.workers) w.postMessage({ stop: true });
-      for (const share of solver.shares) share.done = true;
-      solver.result.done = true;
-      solver.result.early = true;
-      idleLater();
-    }
+    return rows;
+  }
+  function summarizeShares(task) {
+    const rows = mergedRows(task);
+    const rounds = task.shares.reduce((sum, s) => sum + s.rounds, 0);
+    return Object.assign(S.summarize(rows, rounds, task.target, task.goal), { done: task.shares.every((s) => s.done) });
+  }
+  function merge() {
+    mergeTimer = 0;
+    if (!solver.shares || !solver.meta) return;
+    solver.result = summarizeShares(solver);
+    if (solver.result.done) cacheCompleted();
     renderResults();
     renderBoard();
     renderCourt();
@@ -668,16 +873,7 @@
   // Whether the advice is final: the live check has finished, or there's
   // nothing to compare. Until then no move is advised, so the advice never
   // changes its mind a moment after it's shown.
-  function settled() {
-    const r = solver.result;
-    if (!r) return false;
-    if (r.done || r.options.length <= 1) return true;
-    const [top, ...rest] = r.options;
-    if (r.rounds >= LIVE_MIN && rest.every((o) => o.gapSe > 0 && top.mean - o.mean > CLEAR_SE * o.gapSe)) return true;
-    // Out of time: the advice is the check's leader once it has LIVE_MIN
-    // playouts each, else the strategy's own pick (recommendation()).
-    return Date.now() - solver.startedAt >= CHECK_MS;
-  }
+  const settled = () => !!solver.result && (solver.result.done || solver.result.options.length <= 1);
   // A picture being read (the reader shows it on the board's card).
   let reading = 0;
   function setReading(on) {
@@ -701,8 +897,9 @@
   // Cancel. When the best move there is not to consume, the advice says
   // Cancel, which ends a chain or leaves the day's first consume (report
   // 323: "recommended to End day instead of cancel consume").
-  function recommendation() {
-    const rec = bestMove();
+  function recommendation(st = solver.st, pick = solver.instant, result = solver.result) {
+    const rec = rankRecommendation(st, pick, result);
+    if (st !== solver.st) return rec;
     const rd = reader.reading;
     if (!rec || !rec.action || rec.action.type !== 'end' || !rd || !rd.chain || model.step !== 'manage') return rec;
     return Object.assign({}, rec, { label: 'Cancel the consume, then end the day', why: `Your game shows a meal pick, where a meal or Cancel are the choices. ${rec.why || ''}`.trim() });
@@ -710,10 +907,8 @@
 
   // The strategy's instant pick, unless the live check finds a clearly better
   // move (by more than its paired margin), so the advice doesn't flicker.
-  function bestMove() {
-    if (!solver.st) return null;
-    const pick = solver.instant;
-    const r = solver.result;
+  function rankRecommendation(st = solver.st, pick = solver.instant, r = solver.result) {
+    if (!st) return null;
     const ranked = r ? r.options : [];
     // A check cut short by the time cap (early) leads only with LIVE_MIN
     // playouts each; with fewer, the strategy's own pick stands (f5's review).
@@ -920,6 +1115,7 @@
   }
 
   function renderBoard() {
+    if (desktopHidden()) return;
     const { st } = buildState(model);
     const rec = fresh() && settled() ? recommendation() : null;
     const a = rec ? rec.action : null;
@@ -963,6 +1159,7 @@
   }
 
   function renderCourt() {
+    if (desktopHidden()) return;
     const working = fresh() && !settled();
     const rec = fresh() && settled() ? recommendation() : null;
     let title;
@@ -994,6 +1191,7 @@
   }
 
   function renderEditor() {
+    if (desktopHidden()) return;
     const n = selected;
     const c = model.cells[n];
     const office = n === T.OFFICE;
@@ -1043,6 +1241,7 @@
   }
 
   function renderSettings() {
+    if (desktopHidden()) return;
     const maxDays = clamp(toInt(model.maxDays, 20), 5, 60);
     // The game counts down: "N day(s) until Riot" on day maxDays - N.
     const riot = $('az-riot');
@@ -1166,7 +1365,43 @@
 
   const actionKey = (a) => [a.type, a.cell, a.to, a.id, a.accept, a.choice].join('|');
 
+  // The desktop receives structured results directly. No DOM parsing,
+  // MutationObserver delay or hidden results-table rendering is required.
+  function desktopSnapshot() {
+    const has = !!solver.st;
+    const stale = has && (desktopStale || !fresh());
+    const working = has && !stale && !settled();
+    const rec = has && !stale && !working ? recommendation() : null;
+    const r = solver.result;
+    const goal = r ? r.goal : model.mode === 'challenge' ? 'contract' : 'rainbows';
+    const options = r ? r.options : [];
+    const top = options[0], second = options[1];
+    return {
+      background: desktopHidden(),
+      cacheHit: solver.cached,
+      forecastHit: solver.forecastHit, forecastResumed: solver.forecastResumed,
+      has, stale, working, move: rec ? rec.label : '', why: rec ? rec.why || '' : '',
+      progress: working ? Math.round(100 * progress()) : null,
+      nothing: has && !stale && !working && !rec,
+      expect: rec && rec.option ? expectText(goal, rec.option, solver.st) : '',
+      chain: rec ? afterText(rec.action) : '',
+      status: rec && r ? options.length > 1 ? `Live check: ${r.rounds.toLocaleString()} playouts per option` : 'Only one move here.' : '',
+      options: options.slice(0, 4).map((o) => ({ label: o.label, value: working ? `${r.rounds} / ${solver.target}` : fmtOption(goal, o, solver.st), best: !!rec && S.sameAction(o.action, rec.action) })),
+      close: !!(top && second && top.mean - second.mean < 1.96 * second.gapSe),
+      shot, flagged: flags.size, canFix: !!shot,
+      shotText: shot ? `Read from your screenshot${flags.size ? `, with ${T.plural(flags.size, 'cell')} marked Check` : ''}.${unsureTools()}` : '',
+      canReportReading: !!(reader.image && reader.result && window.TartarusReport),
+      problems: desktopProblems.slice(0, 3), toolsConfirm: model.toolsToConfirm || '',
+      treasureWait: !!model.treasureWait,
+      riot: (model.mode === 'challenge' ? T.CHALLENGE_DAYS : model.maxDays) - model.day,
+      dayof: `Day ${model.day}`, step: model.step,
+      reading: desktopReading, lastRead: desktopLastRead,
+    };
+  }
+
   function renderResults() {
+    desktopChanged();
+    if (desktopHidden()) return;
     $('az-treasure-wait').hidden = !model.treasureWait;
     const box = $('az-results');
     box.hidden = !solver.st;
@@ -1303,6 +1538,7 @@
   }
 
   function renderApplied() {
+    if (desktopHidden()) return;
     const box = $('az-applied');
     box.hidden = !applied;
     if (!applied) return;
@@ -1325,6 +1561,7 @@
 
   // The line under the ask button: whether boards are shared, and the switch.
   function renderShare() {
+    if (desktopHidden()) return;
     const box = $('az-share');
     if (!SHARE) {
       box.hidden = true;
@@ -1337,6 +1574,9 @@
   }
 
   function showProblems(problems) {
+    desktopProblems = problems;
+    desktopChanged();
+    if (desktopHidden()) return;
     const list = $('az-problems');
     list.hidden = !problems.length;
     list.innerHTML = problems.map((p) => `<li>${esc(p)}</li>`).join('');
@@ -1581,6 +1821,48 @@
   // ---------- Reading a screenshot ----------
 
   const reader = { worker: null, failed: false, id: 0, pending: null, image: null, result: null, reading: null, ms: 0, picks: new Map(), pickId: 0 };
+  let readyWorker = null, readyFailed = false, readyCalibration = null, readyId = 0;
+  const readyJobs = new Map();
+  function stopReadyWorker() {
+    readyFailed = true;
+    if (readyWorker) readyWorker.terminate();
+    readyWorker = null;
+    for (const task of readyJobs.values()) { clearTimeout(task.timer); task.resolve(false); }
+    readyJobs.clear();
+  }
+  function prepareReadyWorker() {
+    if (!FAST_DESKTOP || readyFailed) return null;
+    if (readyWorker) return readyWorker;
+    try {
+      readyWorker = new Worker(`js/ready-worker.js${SCRIPT_QUERY}`);
+      readyWorker.onmessage = ({ data }) => {
+        const task = readyJobs.get(data.id);
+        if (task) { readyJobs.delete(data.id); clearTimeout(task.timer); task.resolve(!!data.ready); }
+      };
+      readyWorker.onerror = (event) => { event.preventDefault(); stopReadyWorker(); };
+      if (readyCalibration) readyWorker.postMessage({ calibrate: readyCalibration });
+    } catch { stopReadyWorker(); }
+    return readyWorker;
+  }
+  async function probeFrame(bitmap, meta) {
+    if (!readyCalibration || !prepareReadyWorker()) return null;
+    let copy;
+    try {
+      if (bitmap.width > 2600) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 2600; canvas.height = Math.round(bitmap.height * 2600 / bitmap.width);
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        copy = await createImageBitmap(canvas);
+      } else copy = await createImageBitmap(bitmap);
+      if (!readyWorker) { copy.close(); return false; }
+      return await new Promise((resolve) => {
+        const id = ++readyId, timer = setTimeout(stopReadyWorker, 1000);
+        readyJobs.set(id, { resolve, timer });
+        try { readyWorker.postMessage({ id, epoch: meta.epoch, bitmap: copy }, [copy]); }
+        catch { copy.close(); stopReadyWorker(); }
+      });
+    } catch { if (copy) copy.close(); return false; }
+  }
   const SHORT_TIER = ['Normal', 'Magic', 'Rare', 'Legend.', 'Supreme'];
 
   // A notice pinned to the window while a screenshot is read, so a paste
@@ -1704,7 +1986,23 @@
 
   // Reads a picture of the game (a pasted screenshot, or a frame from Follow
   // my game). opts.quiet skips the prompts; opts.onRead hears how it went.
+  function postBoard(message, transfer) {
+    message.lang = gameLang;
+    if (reader.boardBusy) {
+      if (reader.queuedBoard && reader.queuedBoard.message.bitmap) reader.queuedBoard.message.bitmap.close();
+      reader.queuedBoard = { message, transfer };
+      return;
+    }
+    reader.boardBusy = true;
+    reader.worker.postMessage(message, transfer);
+  }
+
   function readBitmap(source, opts) {
+    if (FAST_DESKTOP) pauseForecast();
+    if (opts && opts.direct && typeof OffscreenCanvas === 'function' && readerWorker()) {
+      runScan(null, opts, source);
+      return;
+    }
     // Very large screenshots are scaled down; the reader works at any size.
     const scale = Math.min(1, 2600 / source.width);
     const w = Math.round(source.width * scale);
@@ -1715,21 +2013,27 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, w, h);
     reader.image = canvas;
+    if (FAST_DESKTOP) reader.lastCapture = canvas;
     runScan(ctx.getImageData(0, 0, w, h), opts);
   }
 
-  function runScan(imageData, opts) {
+  function runScan(imageData, opts, bitmap) {
     const o = opts || {};
+    if (bitmap) reader.lastCapture = null;
     // Follow my game's pictures come every step: their screenshot stays
     // folded away, so the board doesn't move down each time.
     reader.folded = !showShots;
     reader.follow = !!o.quiet;
     reader.id += 1;
     const id = reader.id;
+    if (reader.pending) reader.pending.done(null, 'a newer picture came in');
     const t0 = performance.now();
     setReading(true);
+    let completed = false;
     const done = (result, error) => {
-      if (id === reader.id) setReading(false);
+      if (completed) return;
+      completed = true;
+      setReading(false);
       if (id !== reader.id) {
         if (o.onRead) o.onRead({ ok: false, skipped: true, reason: 'a newer picture came in' });
         return;
@@ -1784,10 +2088,25 @@
     // The worker outlives this call, so it answers whichever reading is newest.
     reader.pending = { imageData, id, done };
     readerWorker();
-    if (reader.worker) {
+    if (reader.worker && bitmap) {
+      if (bitmap.width > 2600) {
+        // Chromium's worker/main-thread downscalers can round differently.
+        // Keep the existing 4K downscale exactly, then transfer the bitmap
+        // without reading or cloning its RGBA pixels on the main thread.
+        const scale = 2600 / bitmap.width;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext('2d', { willReadFrequently: true }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        createImageBitmap(canvas).then((scaled) => {
+          bitmap.close();
+          if (id !== reader.id) { scaled.close(); return; }
+          postBoard({ id, bitmap: scaled }, [scaled]);
+        }).catch((error) => done(null, error.message));
+      } else postBoard({ id, bitmap }, [bitmap]);
+    } else if (reader.worker) {
       const copy = imageData.data.slice().buffer;
-      // lang: the game's language, for its door cards (see TartarusScan.scan).
-      reader.worker.postMessage({ id, width: imageData.width, height: imageData.height, buffer: copy, lang: gameLang }, [copy]);
+      postBoard({ id, width: imageData.width, height: imageData.height, buffer: copy }, [copy]);
     } else scanHere(imageData, id, done);
   }
 
@@ -1798,6 +2117,7 @@
     if (!reader.worker && !reader.failed) {
       try {
         reader.worker = new Worker(`js/scan-worker.js${SCRIPT_QUERY}`);
+        reader.worker.postMessage({ configure: { parallel: FAST_DESKTOP, tracking: FAST_DESKTOP } });
         reader.worker.onmessage = (e) => {
           if (e.data.kind === 'pick' || e.data.kind === 'objective') {
             const answer = reader.picks.get(e.data.id);
@@ -1805,14 +2125,35 @@
             if (answer) answer(e.data.result, e.data.error);
             return;
           }
+          reader.boardBusy = false;
+          reader.tracking = e.data.tracking || null;
           const p = reader.pending;
-          if (p && e.data.id === p.id) p.done(e.data.result, e.data.error);
+          if (p && e.data.id === p.id) {
+            readyCalibration = e.data.calibration || null;
+            if (readyWorker) readyWorker.postMessage({ calibrate: readyCalibration });
+            if (e.data.preview) {
+              if (reader.image && typeof reader.image.close === 'function' && !(window.TartarusReport && window.TartarusReport.isOpen())) reader.image.close();
+              reader.image = e.data.preview;
+              reader.lastCapture = reader.image;
+            }
+            p.done(e.data.result, e.data.error);
+          } else if (e.data.preview) e.data.preview.close();
+          const queued = reader.queuedBoard;
+          reader.queuedBoard = null;
+          if (queued && queued.message.id === reader.id) postBoard(queued.message, queued.transfer);
+          else if (queued && queued.message.bitmap) queued.message.bitmap.close();
         };
         reader.worker.onerror = () => {
+          readyCalibration = null;
+          if (readyWorker) readyWorker.postMessage({ calibrate: null });
           reader.failed = true;
           reader.worker = null;
+          reader.boardBusy = false;
+          if (reader.queuedBoard && reader.queuedBoard.message.bitmap) reader.queuedBoard.message.bitmap.close();
+          reader.queuedBoard = null;
           const p = reader.pending;
-          if (p) scanHere(p.imageData, p.id, p.done);
+          if (p && p.imageData) scanHere(p.imageData, p.id, p.done);
+          else if (p) p.done(null, 'The reader stopped. Take another picture.');
           for (const [, answer] of reader.picks) answer(null, 'the reader stopped');
           reader.picks.clear();
         };
@@ -1855,6 +2196,7 @@
     canvas.height = h;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, w, h);
+    if (FAST_DESKTOP) reader.lastCapture = canvas;
     const imageData = ctx.getImageData(0, 0, w, h);
     return new Promise((resolve) => {
       setReading(true);
@@ -1885,7 +2227,7 @@
   // first sees a run midway, and how many consumes or doors are left weighs
   // an early consume for the instrument. One try at a time, three failures
   // in a row a day.
-  const corner = { busy: false, tries: 0, day: 0, done: false };
+  const corner = { busy: false, tries: 0, day: 0, done: false, ticket: 0 };
   async function readCornerObjective(source, box) {
     const worker = await ocrWorker();
     if (!worker) return { ok: false };
@@ -1940,8 +2282,11 @@
     if (corner.busy || corner.tries >= 3 || (known && (corner.done || !counting))) return;
     corner.busy = true;
     corner.tries += 1;
+    const ticket = ++corner.ticket, generation = ocrGeneration, readId = reader.id;
     readCornerObjective(source, box).then((read) => {
+      if (ticket !== corner.ticket) return;
       corner.busy = false;
+      if (generation !== ocrGeneration || readId !== reader.id || model.day !== day) return;
       if (!read.ok) return;
       corner.done = true;
       corner.tries = 0;
@@ -1973,7 +2318,7 @@
       const so = counted ? ` (${read.completed || read.have >= need ? 'met' : `${read.have} of ${need} so far`})` : '';
       toast(wasKnown ? `${read.name}: ${so.slice(2, -1)}, read from the board’s corner.` : `This run’s objective: ${read.name}${so}, read from the board’s corner. It’s set under Objective.`, 'ok');
     }, () => {
-      corner.busy = false;
+      if (ticket === corner.ticket) corner.busy = false;
     });
   }
 
@@ -2011,15 +2356,10 @@
   // pinned version from jsDelivr, cached by the browser). It runs in this
   // browser; the picture isn't sent anywhere. Without it, the cards are
   // read by their art alone.
-  // A load that fails is tried again with the next picture (a network
-  // hiccup mustn't turn the names off until the page reloads); one that
-  // hangs gives up after 20 s for this picture, so the art reading goes
-  // ahead, and keeps loading for the next. ocrError: why the last try
-  // didn't give a reader, for the reading (report 111).
-  let ocr = null;
-  let ocrError = '';
+  let ocr = null, ocrGeneration = 0, ocrError = '';
   function ocrWorker() {
     if (!ocr) {
+      const generation = ocrGeneration;
       ocr = new Promise((resolve, reject) => {
         if (window.Tesseract) return resolve();
         const sc = document.createElement('script');
@@ -2028,21 +2368,20 @@
         sc.onerror = () => reject(new Error('its script didn’t download'));
         document.head.appendChild(sc);
       })
-        .then(() => window.Tesseract.createWorker('eng'))
-        .then((w) => {
+        .then(() => generation === ocrGeneration ? window.Tesseract.createWorker('eng') : null)
+        .then(async (worker) => {
+          if (generation !== ocrGeneration) { if (worker) await worker.terminate(); return null; }
           ocrError = '';
-          return w;
-        }, (e) => {
-          ocrError = String((e && e.message) || e || 'it didn’t load');
-          ocr = null;
-          return null;
-        });
+          return worker;
+        })
+        .catch((error) => { if (generation === ocrGeneration) { ocr = null; ocrError = String(error.message || error); } return null; });
     }
-    const limit = new Promise((resolve) => setTimeout(() => {
+    let timer;
+    const limit = new Promise((resolve) => { timer = setTimeout(() => {
       if (!ocrError) ocrError = 'it took over 20 s to load';
       resolve(null);
-    }, 20000));
-    return Promise.race([ocr, limit]);
+    }, 20000); });
+    return Promise.race([ocr, limit]).finally(() => clearTimeout(timer));
   }
 
   function editDistance(a, b) {
@@ -2163,6 +2502,7 @@
     canvas.height = h;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, w, h);
+    if (FAST_DESKTOP) reader.lastCapture = canvas;
     const imageData = ctx.getImageData(0, 0, w, h);
     const t0 = performance.now();
     setReading(true);
@@ -2201,7 +2541,7 @@
   // board as it is. Either way the offer is set as the step, and the advice
   // says which to take, or to re-roll. Cards the reader wasn't sure of are
   // named for checking.
-  function usePick(read, fresh) {
+  function usePick(read, fresh, reuse) {
     if (!read || !read.ok) return false;
     const start = fresh !== false;
     reader.undoable = true;
@@ -2225,6 +2565,8 @@
     if (start) gifts.waiting = 0;
     model.step = 'choice';
     model.choice = { kind: 'tool', options: read.cards.map((c) => c.sim), rerolls: read.reroll ? 1 : 0 };
+    model.toolsConfirmed = null;
+    model.toolsOffer = { options: model.choice.options.slice(), advised: null };
     applied = null;
     solver.st = null;
     reader.folded = true;
@@ -2233,14 +2575,11 @@
     changed();
     const unsure = read.cards.filter((c) => c.conf < 0.5);
     const check = unsure.length ? ` Check ${unsure.map((c) => `the ${['left', 'middle', 'right'][read.cards.indexOf(c)]} one (read as ${c.name})`).join(' and ')}: if it's wrong, change it under “A tool or gift” and press Recheck.` : '';
-    // No card's name could be read (the text reader didn't load): the art
-    // alone can name an instrument that wasn't offered (report 111 advised
-    // taking Kin's Coin), so the offer is checked before any advice.
     if (read.ocrFailed && !read.byName) {
-      toast(`The instrument offer read as ${read.names.join(', ')} from the cards' pictures alone: their names couldn't be read (the text reader: ${read.ocrFailed}). Check the three under “A tool or gift”, then press Recheck for the advice.`, 'bad');
+      toast(`The instrument names couldn't be read (${read.ocrFailed}). Check the three under A tool or gift, then press Recheck.`, 'bad');
       return false;
     }
-    const asked = ask(true, start);
+    const asked = ask(true, start, reuse);
     toast(`${start ? 'A fresh run: the instrument offer is' : 'An instrument offer:'} ${read.names.join(', ')}${read.reroll ? ', with a re-roll left' : ''}. ${asked ? 'Which to take is below.' : 'It needs fixing before the advice.'}${check}`, unsure.length ? 'bad' : 'ok');
     return asked;
   }
@@ -2277,7 +2616,7 @@
   // what led to it, from the log: right after a swap, the newcomer was a
   // Rainbow, so it's in the vault and its cell locked again; after a
   // consume, today's consume is used.
-  function useTreasure(after) {
+  function useTreasure(after, reuse) {
     const gift = () => {
       const picks = picksNow();
       model.step = 'choice';
@@ -2294,19 +2633,17 @@
       gifts.board = gifts.log ? Object.assign({}, gifts.log) : null;
       changed();
       renderScan();
-      const asked = ask(true);
+      const asked = ask(true, false, reuse);
       toast(`Board seen behind the Warden’s Treasure. ${asked ? 'Which gift to take is below.' : 'The board needs fixing before the advice.'}`, asked ? 'ok' : 'bad');
       return asked;
     }
-    // Back at the Treasure after viewing the board: nothing more to wait for,
-    // unless a pick was confirmed since (Opulence's next pick).
+    // Back at the Treasure after viewing the board: nothing more to wait for.
     if (model.step === 'choice' && model.choice.kind === 'gift' && model.treasureSeen && !pickedSinceBoard()) {
       const picks = picksNow();
-      if (picks === model.choice.picks) return fresh() && settled() ? true : ask(true);
-      // A pick's Rainbow brought more picks: the advice weighs them.
+      if (picks === model.choice.picks) return reuse ? ask(true, false, true) : fresh() && settled() ? true : ask(true);
       model.choice = Object.assign({}, model.choice, { picks });
       changed();
-      return ask(true);
+      return ask(true, false, reuse);
     }
     undo.push({ model: JSON.parse(JSON.stringify(model)), selected, shot });
     if (undo.length > 30) undo.shift();
@@ -2342,8 +2679,9 @@
       .then(() => {
         setTimeout(() => {
           try {
-            const result = window.TartarusScan.scan(imageData, window.TartarusScan.withPanelIcons(window.TARTARUS_SCAN, window.TARTARUS_PICK), { lang: gameLang });
-            if (result.tools && result.tools.tools) for (const t of result.tools.tools) Object.assign(t, window.TARTARUS_SCAN.toolNames[t.id] || {});
+            const ref = window.TartarusScan.withPanelIcons(window.TARTARUS_SCAN, window.TARTARUS_PICK);
+            const result = window.TartarusScan.scan(imageData, ref, { lang: gameLang });
+            if (result.tools && result.tools.tools) for (const t of result.tools.tools) Object.assign(t, ref.toolNames[t.id] || {});
             done(result);
           } catch (e) {
             done(null, e.message);
@@ -2446,7 +2784,8 @@
     }
     m.dest = [];
     m.chainArmed = false;
-    const tools = (m.tools || []).map((id) => ({ id, sim: id, name: T.toolName(id), conf: 1 }));
+    const tools = runTools(r.tools?.tools || [], base, m, notes);
+    m.tools = tools.map((t) => t.sim);
     return { model: m, checks, notes, chromatic: (m.vault || []).length, tools, unsim: [], chain: r.chain.targets };
   }
 
@@ -2458,56 +2797,51 @@
   // alike (a tooltip can cover them, too). Without anything known of the
   // run, only icons the reader is sure of count. A screenshot from an
   // earlier day than the board before starts afresh.
-  // sims: the instruments the reader can tell on a panel (any other reads
-  // as something else).
-  function runTools(read, base, m, notes, sims) {
+  const toolSet = (tools) => [...new Set((tools || []).filter((id) => T.TOOLS[id]))].sort().join(',');
+  function confirmTools(m) {
+    m.toolsConfirmed = { tools: toolSet(m.tools), slots: Math.max(m.tools.length, m.toolsPanelSlots || 0) };
+    m.toolsToConfirm = '';
+    m.toolsOffer = null;
+  }
+  function runTools(read, base, m, notes) {
     const sameRun = !(m.day < base.day);
     const known = sameRun ? (base.tools || []).filter((id) => T.TOOLS[id]) : [];
-    const offer = sameRun && base.step === 'choice' && base.choice && base.choice.kind === 'tool' ? base.choice.options.filter((id) => T.TOOLS[id]) : [];
+    const pending = sameRun && base.toolsOffer;
+    const offer = sameRun && base.step === 'choice' && base.choice && base.choice.kind === 'tool' ? base.choice.options.filter((id) => T.TOOLS[id]) : (pending?.options || []).filter((id) => T.TOOLS[id]);
     const out = known.map((id) => ({ id, sim: id, name: T.toolName(id), conf: 1, kept: true }));
     const has = (id) => out.some((t) => t.sim === id);
     const slots = read.length;
-    // A set run: once the run's instruments are known (the offers the
-    // analyzer saw and advised, or the player's confirmation), they're
-    // presumed and locked (m.toolsLocked), and icons never change them. The
-    // user: "once the instruments have been recommended and selected, it
-    // should presume those are the instruments and not say anything unless
-    // it sees more total instruments than it already had". So the only
-    // question is a panel showing more than the run has and than the count
-    // last confirmed (m.toolsSeen).
+    m.toolsPanelSlots = slots;
+    m.toolsConfirmed = sameRun ? base.toolsConfirmed || null : null;
+    m.toolsOffer = null;
+    // Once the run's instruments are known, they're locked: icons never
+    // change them. When the panel disagrees (more icons than known, or an
+    // icon that's clearly another instrument), the player is asked to
+    // confirm them (m.toolsToConfirm).
     m.toolsToConfirm = '';
-    m.toolsPanel = slots;
-    if (!sameRun) {
-      m.toolsLocked = false;
-      m.toolsSeen = 0;
-    }
-    if (sameRun && (known.length || offer.length || base.runStart || base.toolsLocked)) {
+    if (sameRun && (known.length || offer.length || base.runStart || m.toolsConfirmed)) {
+      const rec = offer.length && base === model && fresh() ? recommendation() : null;
+      const advised = rec?.action.type === 'choose' && offer.includes(rec.action.id) ? rec.action.id : offer.includes(pending?.advised) ? pending.advised : null;
+      if (offer.length && !offer.some(has)) m.toolsOffer = { options: offer.slice(), advised };
       if (offer.length && slots > known.length && !offer.some(has)) {
-        const seen = read.filter((t) => offer.includes(t.sim)).sort((a, b) => b.conf - a.conf)[0];
-        // An icon read as an instrument that wasn't offered can still be one
-        // that was: the closest offered one among its runner-ups (report 75:
-        // the Forged Key read as the Lost Ring of Keys).
-        let alike = null;
-        if (!seen) {
-          for (const t of read) {
-            if (has(t.sim)) continue;
-            const a = (t.alts || []).find((x) => x.sim && offer.includes(x.sim) && x.score >= 0.7);
-            if (a && (!alike || a.score > alike.score)) alike = { sim: a.sim, score: a.score, as: t.sim };
-          }
-        }
+        const seen = read.filter((t) => offer.includes(t.sim) && t.conf >= TOOL_SURE).sort((a, b) => b.conf - a.conf)[0];
         // The advice given on that offer: the board before is the offer, so
         // the analyzer's current recommendation is for it.
-        const rec = base === model && fresh() ? recommendation() : null;
-        const advised = rec && rec.action && rec.action.type === 'choose' && offer.includes(rec.action.id) ? rec.action.id : null;
-        const take = seen ? seen.sim : alike ? alike.sim : advised;
+        const take = seen ? seen.sim : advised;
         if (take) {
           out.push({ id: take, sim: take, name: T.toolName(take), conf: 1, kept: true });
-          if (!seen && alike) notes.push(`An icon read as ${alike.as ? T.toolName(alike.as) : 'another instrument'}, which wasn't offered: taken as ${T.toolName(take)}, the closest of the offer. If you took another, change it under Torture Instrument.`);
-          else if (!seen) notes.push(`Took it you chose ${T.toolName(take)}, as advised. If you took another, change it under Torture Instrument.`);
+          m.toolsOffer = null;
+          if (!seen) m.toolsToConfirm = `The selected instrument wasn't recognized. The analyzer assumed ${T.toolName(take)}, as advised. Check the instruments you actually took, then press These are right.`;
         } else notes.push(`Your instruments show one more than before, from the offer of ${offer.map((id) => T.toolName(id)).join(', ')}: set which you took under Torture Instrument.`);
       }
-      if (out.length) m.toolsLocked = true;
-      if (slots > Math.max(out.length, base.toolsSeen || 0)) m.toolsToConfirm = `Your panel shows ${T.plural(slots, 'instrument')}, and the analyzer has ${out.length}: ${out.map((t) => t.name).join(', ') || 'none'}. Set the ones you hold, then press These are right.`;
+      const confirmed = m.toolsConfirmed;
+      if (confirmed && (confirmed.tools !== toolSet(out.map((t) => t.sim)) || slots > confirmed.slots)) m.toolsConfirmed = null;
+      const off = read.filter((t) => t.sim && t.conf >= TOOL_SURE && !has(t.sim));
+      if (!m.toolsConfirmed) {
+        if (slots > out.length) m.toolsToConfirm = `Your panel shows ${T.plural(slots, 'instrument')}, and the analyzer has ${out.length}: ${out.map((t) => t.name).join(', ') || 'none'}. Set the ones you hold, then press These are right.`;
+        else if (off.length) m.toolsToConfirm = `An icon on your panel looks like ${off.map((t) => T.toolName(t.sim)).join(' and ')}, which isn’t one the analyzer has for this run (${out.map((t) => t.name).join(', ')}). Check your instruments, then press These are right.`;
+        else if (m.toolsOffer) m.toolsToConfirm = `The instrument selected from the last offer hasn't been read yet. The analyzer currently uses ${out.map((t) => t.name).join(', ') || 'no instruments'}. Set the ones you hold, then press These are right.`;
+      }
       return out;
     }
     // Nothing known of the run yet: only icons the reader is sure of, and
@@ -2685,8 +3019,8 @@
     const doorsDue = T.DEFAULT_PARAMS.destinations - m.tools.filter((id) => takers.includes(id)).length;
     if (m.step === 'patrol' && !officeNear && m.dest.length && m.dest.length < doorsDue) m.shortDays = [...new Set([...(m.shortDays || []), m.day])];
     if ((m.shortDays || []).length >= 2 && !m.tools.some((id) => takers.includes(id))) {
-      const hint = `${T.plural(m.shortDays.length, 'morning')} of this run offered a door short, as the Forged Key, Barbed Whip or Burning Stake do. If you hold one, set it under Torture Instrument${m.toolsLocked ? '' : ', then press These are right'}.`;
-      if (m.toolsLocked || m.toolsToConfirm) notes.push(hint);
+      const hint = `${T.plural(m.shortDays.length, 'morning')} of this run offered a door short, as the Forged Key, Barbed Whip or Burning Stake do. If you hold one, set it under Torture Instrument${m.toolsConfirmed ? '' : ', then press These are right'}.`;
+      if (m.toolsConfirmed || m.toolsToConfirm) notes.push(hint);
       else m.toolsToConfirm = hint;
     }
     if (tools.some((t) => t.conf < TOOL_SURE)) notes.push('Some instruments were hard to tell apart: check them under Torture Instrument.');
@@ -2759,6 +3093,7 @@
   }
 
   function renderScan() {
+    if (desktopHidden()) return;
     const box = $('az-scan-result');
     const r = reader.result;
     box.hidden = !r || !reader.image || reader.folded;
@@ -2953,7 +3288,7 @@
     selected = rd.checks.size ? Math.min(...rd.checks) : model.warden;
     // The screenshot stays in view, with what was read drawn on it, to
     // compare with the board.
-    changed();
+    changed({ keepForecast: FAST_DESKTOP });
     scanStatus(rd.checks.size ? `Loaded as your board, with ${T.plural(rd.checks.size, 'cell')} marked Check.` : 'Loaded as your board.');
     renderScan();
   }
@@ -3078,18 +3413,16 @@
       if (!b) return;
       const id = b.dataset.tool;
       model.tools = model.tools.includes(id) ? model.tools.filter((t) => t !== id) : [...model.tools, id];
+      model.toolsConfirmed = null;
       model.choice = Object.assign({}, model.choice, { options: model.choice.options.filter((t) => !model.tools.includes(t)) });
       changed();
     });
     // The player confirms the run's instruments as set: they're locked in,
     // and the advice is checked again with them.
     $('az-tools-ok').addEventListener('click', () => {
-      model.toolsToConfirm = '';
-      model.toolsLocked = true;
-      // The panel's count now: only more than this asks again.
-      model.toolsSeen = Math.max(model.tools.length, model.toolsPanel || 0);
+      confirmTools(model);
       changed();
-      ask();
+      ask(true, false, true);
     });
     $('az-rewards').addEventListener('change', (e) => {
       model.rewards = e.target.checked;
@@ -3258,9 +3591,55 @@
     // Follow my game (js/auto.js, beta): read frames of the game, load
     // them, and ask, without the toasts a pasted screenshot gets.
     window.TartarusAnalyzer = {
+      onDesktopChange: (fn) => { desktopListeners.add(fn); return () => desktopListeners.delete(fn); },
+      cacheInfo: () => solverCache ? solverCache.info() : null,
+      forecastInfo,
+      setForecastEnabled: (enabled) => { forecastEnabled = !!enabled; if (!forecastEnabled) stopForecast(); },
+      // The log watcher stays alive outside the board. Everything expensive
+      // can be recreated on entry; keep completed persistent summaries only.
+      suspend: () => {
+        forecastEnabled = false;
+        corner.ticket++; corner.busy = false; corner.tries = 0; corner.done = false;
+        window.TartarusAnalyzer.invalidate();
+        for (const worker of solver.workers || []) worker.terminate();
+        solver.workers = null; solver.shares = null; solver.meta = null; solver.forecastAlias = null;
+        forecast.families.clear(); forecast.ready.clear();
+        reader.id++;
+        if (reader.worker) reader.worker.terminate();
+        reader.worker = null; reader.boardBusy = false;
+        if (reader.queuedBoard?.message.bitmap) reader.queuedBoard.message.bitmap.close();
+        reader.queuedBoard = null;
+        const pending = reader.pending; reader.pending = null;
+        if (pending) pending.done(null, 'capture suspended');
+        for (const answer of reader.picks.values()) answer(null, 'capture suspended');
+        reader.picks.clear();
+        for (const image of new Set([reader.image, reader.lastCapture])) if (image && typeof image.close === 'function') image.close();
+        reader.image = null; reader.lastCapture = null; reader.result = null; reader.reading = null;
+        stopReadyWorker(); readyFailed = false; readyCalibration = null;
+        const previousOCR = ocr; ocr = null; ocrGeneration++;
+        if (previousOCR) previousOCR.then((worker) => { if (worker) return worker.terminate(); }).catch(() => {});
+      },
+      desktopSnapshot,
+      invalidate: (options = {}) => {
+        desktopStale = true;
+        solver.id++;
+        clearTimeout(mergeTimer); mergeTimer = 0;
+        if (options.forecast === 'pause') pauseForecast();
+        else if (options.forecast !== 'keep') stopForecast();
+        if (!forecast.active && !forecast.plan && solver.workers) for (const worker of solver.workers) worker.postMessage({ id: solver.id, cancel: true });
+        desktopChanged();
+      },
+      setReadStatus: (active, last) => { desktopReading = active; if (last) desktopLastRead = last; desktopChanged(); },
       readFrame: (bitmap) => new Promise((resolve) => readBitmap(bitmap, { quiet: true, folded: true, onRead: resolve })),
+      readFrameDirect: (bitmap) => new Promise((resolve) => readBitmap(bitmap, { quiet: true, folded: true, direct: true, onRead: resolve })),
+      image: () => reader.image,
+      captureImage: () => reader.lastCapture,
+      prepare: () => { const worker = readerWorker(); if (FAST_DESKTOP) { prepareSolverWorkers(); prepareReadyWorker(); } return worker; },
+      probeFrame,
+      readerInfo: () => reader.tracking || null,
+      prepareOCR: () => ocrWorker(),
       readPick: (bitmap) => readPick(bitmap),
-      usePick: (read, fresh) => usePick(read, fresh),
+      usePick: (read, fresh, reuse) => usePick(read, fresh, reuse),
       readTreasure: (bitmap) => readTreasure(bitmap),
       readObjective: (bitmap) => readObjective(bitmap),
       // The game's language (from the log: auto), and a screen the reader
@@ -3271,27 +3650,30 @@
       langBoard: (image) => langBoard(image),
       langMiss: () => (langMiss ? { what: langMiss.what, at: langMiss.at, lang: langName(gameLang) } : null),
       useObjective: (read) => useObjective(read),
-      useTreasure: (after) => useTreasure(after),
-      // Auto Screenshot Mode's Treasure counts ({ rainbows, taken }): the
-      // picks waiting, or null without counts. giftsDone ends a tally that
-      // went stale (no Treasure for a while).
-      giftCounts: (c) => giftCounts(c),
-      giftsDone: () => {
-        gifts.waiting = 0;
-      },
+      useTreasure: (after, reuse) => useTreasure(after, reuse),
+      giftCounts,
+      giftsDone: () => { gifts.waiting = 0; },
       useReading: () => useScan(),
       ask: () => ask(true),
+      askCached: () => ask(true, false, true),
       recommendation: () => (fresh() && settled() ? recommendation() : null),
       // What the reader made of the last picture, in full (the desktop app's
       // test record keeps it).
       readingSummary: () => (reader.result && reader.image ? readingSummary(true) : ''),
       // The live check's workers: how many it may use (setCores, 0 for every
       // core but one) and how many are running now (0 once let go).
-      setCores: (n) => setCores(n),
-      cores: () => ({ cap: coreCap, use: workerCount(), most: MOST_WORKERS, running: solver.workers ? solver.workers.length : 0, onPage: !!solver.failed }),
       day: () => model.day,
       toast,
     };
+    if (FAST_DESKTOP) {
+      const visibility = (visible) => {
+        desktopWindowVisible = !!visible;
+        if (visible) { showProblems(desktopProblems); render(); renderScan(); }
+        desktopChanged();
+      };
+      window.TartarusDesktop.onVisible(visibility);
+      window.TartarusDesktop.visible().then(visibility);
+    }
     // In the desktop app, the link to download it has no use.
     if (window.TartarusDesktop && $('az-desktop-app')) $('az-desktop-app').hidden = true;
     // Reports of something new carry where the player was, nothing more.

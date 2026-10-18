@@ -1,7 +1,7 @@
 {
   "name": "tartarus-overlay",
   "productName": "Tartarus Overlay",
-  "version": "0.2.17",
+  "version": "0.2.17-local.16",
   "description": "Auto Screenshot Mode for the Tartarus board analyzer, with the advice in an overlay over the game.",
   "author": "CoffeeBns",
   "license": "UNLICENSED",
@@ -9,9 +9,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "local": "electron . --site=http://localhost:8090/",
-    "dist": "electron-builder --win --publish never",
-    "release": "electron-builder --win --publish always"
+    "local": "electron . --fast --site=http://localhost:8090/",
+    "dist": "electron-builder --win --publish never"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
@@ -45,14 +44,6 @@
       "oneClick": true,
       "perMachine": false,
       "artifactName": "Tartarus-Overlay-Setup-${version}.${ext}"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "blahdot3h",
-        "repo": "tartarus-simulator",
-        "releaseType": "release"
-      }
-    ]
+    }
   }
 }

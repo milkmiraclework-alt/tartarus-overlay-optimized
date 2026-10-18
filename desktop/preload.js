@@ -8,10 +8,19 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const listen = (channel, fn) => {
   if (typeof fn !== 'function') return;
-  ipcRenderer.on(channel, (e, data) => fn(data));
+  const handler = (e, data) => fn(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
 };
 
 contextBridge.exposeInMainWorld('TartarusDesktop', {
+  fast: process.argv.includes('--tartarus-fast'),
+  onLogChanged: (fn) => listen('log:changed', fn),
+  visible: () => ipcRenderer.invoke('desktop:visible'),
+  onVisible: (fn) => listen('desktop:visible', fn),
+  fastSettings: () => ipcRenderer.invoke('fast:settings'),
+  setFastSettings: (patch) => ipcRenderer.send('fast:set-settings', patch),
+  onFastSettings: (fn) => listen('fast:settings', fn),
   // Whether the game runs, and where its log is: { running, title, log }.
   game: () => ipcRenderer.invoke('game:get'),
   onGame: (fn) => listen('game', fn),
@@ -53,13 +62,6 @@ contextBridge.exposeInMainWorld('TartarusDesktop', {
   // only): { version, at }, or null.
   consent: () => ipcRenderer.invoke('consent:get'),
   setConsent: (value) => ipcRenderer.send('consent:set', value),
-  // When Windows won't share the game window (follow.html only): whether
-  // the player allowed the screen it's on instead ({ allowed, asked }),
-  // asking for that screen on the next share, and where the game window is
-  // on it, for cutting every picture to it.
-  screenShare: () => ipcRenderer.invoke('share:screen-ok'),
-  shareScreen: (on) => ipcRenderer.send('share:screen', !!on),
-  gameCrop: () => ipcRenderer.invoke('game:crop'),
   // The overlay's buttons and the hotkeys: 'capture', 'fix', 'recheck',
   // 'report', and 'debug-report' with its text.
   onDebugReport: (fn) => listen('debug-report', fn),

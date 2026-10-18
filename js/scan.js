@@ -74,12 +74,20 @@
         acc += g[y * w + Math.min(w - 1, x + r + 1)] - g[y * w + Math.max(0, x - r)];
       }
     }
-    for (let x = 0; x < w; x++) {
-      let acc = 0;
-      for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
-      for (let y = 0; y < h; y++) {
-        out[y * w + x] = acc / span;
-        acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    // Keep the same per-column arithmetic, but visit pixels by rows. A
+    // strided column walk misses the CPU cache on large screenshots.
+    const sums = new Float64Array(w);
+    for (let y = -r; y <= r; y++) {
+      const row = Math.min(h - 1, Math.max(0, y)) * w;
+      for (let x = 0; x < w; x++) sums[x] += tmp[row + x];
+    }
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      const next = Math.min(h - 1, y + r + 1) * w;
+      const prev = Math.max(0, y - r) * w;
+      for (let x = 0; x < w; x++) {
+        out[row + x] = sums[x] / span;
+        sums[x] += tmp[next + x] - tmp[prev + x];
       }
     }
     return out;
@@ -143,6 +151,11 @@
     if (w <= 0 || h <= 0) return [];
     const mask = new Uint8Array(w * h);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (test(x0 + x, y0 + y)) mask[y * w + x] = 1;
+    return maskBlobs(mask, w, h, x0, y0);
+  }
+
+  // Keep component traversal identical for generic masks and text masks.
+  function maskBlobs(mask, w, h, x0, y0) {
     const out = [];
     const stack = [];
     for (let i = 0; i < w * h; i++) {
@@ -180,9 +193,8 @@
 
   // Matches the board's fixed frame (walls, office, courtyard, cell numbers)
   // at every scale and position, coarse to fine. Returns { s, tx, ty, score }:
-  // an image point is s * (reference point) + (tx, ty). opts: { sharp, hint }
-  // (both below), from scan.
-  function locateBoard(img, gray, ref, opts) {
+  // an image point is s * (reference point) + (tx, ty).
+  function prepareBoardSearch(img, gray, ref, sharp) {
     const W = img.width;
     const H = img.height;
     const pts = ref.board.points;
@@ -210,8 +222,139 @@
     }
     const bw = maxX - minX;
     const bh = maxY - minY;
-    // sharp: the picture's gray blurred by 1, when the caller has it.
-    const levels = [{ g: (opts && opts.sharp) || blur(gray, W, H, 1), w: W, h: H, f: 1 }];
+    const levels = [{ g: sharp || blur(gray, W, H, 1), w: W, h: H, f: 1 }];
+    while (levels[levels.length - 1].w > 120 && levels[levels.length - 1].h > 60) {
+      const l = levels[levels.length - 1];
+      const d = half(l.g, l.w, l.h);
+      levels.push({ g: d.g, w: d.w, h: d.h, f: l.f * 2 });
+    }
+    return { W, H, pts, n, tv, minX, maxX, minY, maxY, bw, bh, levels };
+  }
+
+  function coarseBoardSearch(prepared, part = 0, parts = 1) {
+    const { W, H, pts, n, minX, maxX, minY, maxY, bw, bh, levels } = prepared;
+    // Coarse: every scale the board could appear at, on a small level, with
+    // a quarter of the points. The board spans most of a screenshot's width
+    // when cropped to it, and about half in a full-screen one.
+    const coarse = { pts: [], tv: null };
+    const keepIdx = [];
+    for (let i = 0; i < n; i += 4) keepIdx.push(i);
+    const cn = keepIdx.length;
+    const ctv = new Float32Array(cn);
+    let cmean = 0;
+    for (const i of keepIdx) cmean += pts[i][2];
+    cmean /= cn;
+    let cnorm = 0;
+    keepIdx.forEach((i, j) => {
+      ctv[j] = pts[i][2] - cmean;
+      cnorm += ctv[j] * ctv[j];
+    });
+    cnorm = Math.sqrt(cnorm);
+    for (let j = 0; j < cn; j++) ctv[j] /= cnorm;
+    coarse.pts = keepIdx.map((i) => pts[i]);
+    const coarseScore = (pixels, xs, ys, xi, yi) => {
+      let sx = 0;
+      let sxx = 0;
+      let sxt = 0;
+      for (let j = 0; j < cn; j++) {
+        const v = pixels[ys[yi + j] + xs[xi + j]];
+        sx += v;
+        sxx += v * v;
+        sxt += v * ctv[j];
+      }
+      const varx = sxx - (sx * sx) / cn;
+      return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
+    };
+    const interiorScore = (pixels, offsets, origin) => {
+      let sx = 0;
+      let sxx = 0;
+      let sxt = 0;
+      for (let j = 0; j < cn; j++) {
+        const v = pixels[origin + offsets[j]];
+        sx += v;
+        sxx += v * v;
+        sxt += v * ctv[j];
+      }
+      const varx = sxx - (sx * sx) / cn;
+      return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
+    };
+    // The board spans at least 30% of the width, or 35% of the height: on
+    // a 32:9 screen (5120x1440) only about 27% of the width (report 144).
+    // The scales from 30% of the width up stay as they were (a step moved
+    // turns a reading near a threshold), the rest go on below them.
+    const sMin = Math.max(0.12, (0.3 * W) / bw);
+    const sLow = Math.max(0.12, Math.min(sMin, (0.35 * H) / bh));
+    const sMax = Math.min(8, (1.1 * Math.max(W / bw, H / bh)));
+    const scales = [];
+    for (let s = sMin; s <= sMax; s *= 1.05) scales.push(s);
+    for (let s = sMin / 1.05; s >= sLow; s /= 1.05) scales.push(s);
+    const top = [];
+    let order = 0;
+    for (const s of scales) {
+      const currentOrder = order++;
+      if (currentOrder % parts !== part) continue;
+      // The coarsest level that still shows the frame's detail.
+      let L = 0;
+      while (L + 1 < levels.length && s / levels[L + 1].f >= 0.2) L += 1;
+      const lv = levels[L];
+      const k = s / lv.f;
+      // Allow a little of the board's edge to fall outside the picture.
+      const ox0 = Math.ceil(-minX * k - 0.06 * bw * k);
+      const ox1 = Math.floor(lv.w - 1 - maxX * k + 0.06 * bw * k);
+      const oy0 = Math.ceil(-minY * k - 0.08 * bh * k);
+      const oy1 = Math.floor(lv.h - 1 - maxY * k + 0.08 * bh * k);
+      if (ox1 < ox0 || oy1 < oy0) continue;
+      // Each axis is identical across every position on the other axis.
+      // Compute the exact truncated/clamped sample coordinates once per
+      // axis instead of repeating the projection for every candidate.
+      const xs = new Int32Array((ox1 - ox0 + 1) * cn);
+      const ys = new Int32Array((oy1 - oy0 + 1) * cn);
+      const offsets = new Int32Array(cn);
+      const sampleX = new Int32Array(cn);
+      const sampleY = new Int32Array(cn);
+      for (let j = 0; j < cn; j++) {
+        sampleX[j] = (coarse.pts[j][0] * k) | 0;
+        sampleY[j] = (coarse.pts[j][1] * k) | 0;
+        offsets[j] = sampleY[j] * lv.w + sampleX[j];
+      }
+      const interiorX = new Uint8Array(ox1 - ox0 + 1);
+      const interiorY = new Uint8Array(oy1 - oy0 + 1);
+      for (let ox = ox0, base = 0; ox <= ox1; ox++, base += cn) {
+        let interior = true;
+        for (let j = 0; j < cn; j++) {
+          const x = (ox + coarse.pts[j][0] * k) | 0;
+          xs[base + j] = x < 0 ? 0 : x >= lv.w ? lv.w - 1 : x;
+          if (xs[base + j] !== ox + sampleX[j]) interior = false;
+        }
+        interiorX[ox - ox0] = interior;
+      }
+      for (let oy = oy0, base = 0; oy <= oy1; oy++, base += cn) {
+        let interior = true;
+        for (let j = 0; j < cn; j++) {
+          const y = (oy + coarse.pts[j][1] * k) | 0;
+          ys[base + j] = (y < 0 ? 0 : y >= lv.h ? lv.h - 1 : y) * lv.w;
+          if (ys[base + j] !== (oy + sampleY[j]) * lv.w) interior = false;
+        }
+        interiorY[oy - oy0] = interior;
+      }
+      let best = null;
+      for (let oy = oy0, yi = 0; oy <= oy1; oy++, yi += cn) {
+        for (let ox = ox0, xi = 0; ox <= ox1; ox++, xi += cn) {
+          // When no sample clips, one translated offset replaces two axis
+          // lookups. Verify the integer identities above, including rounding,
+          // so clipped edges and rare rounding cases use the exact fallback.
+          const sc = interiorX[ox - ox0] && interiorY[oy - oy0] ? interiorScore(lv.g, offsets, oy * lv.w + ox) : coarseScore(lv.g, xs, ys, xi, yi);
+          if (!best || sc > best.score) best = { ox, oy, score: sc };
+        }
+      }
+      if (best) top.push({ s, tx: best.ox * lv.f, ty: best.oy * lv.f, f: lv.f, score: best.score, order: currentOrder });
+    }
+    return top;
+  }
+
+  function refineBoardSearch(prepared, top) {
+    if (!top.length) return null;
+    const { pts, n, tv, minX, maxX, minY, maxY, levels } = prepared;
     const score = (lv, s, ox, oy, nearest) => {
       let sx = 0;
       let sxx = 0;
@@ -233,7 +376,12 @@
       const varx = sxx - (sx * sx) / n;
       return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
     };
-    // Fine steps over scale and position together, about a candidate.
+    // Shards can finish in any order. Restore the serial order before the
+    // stable score sort, so tied candidates retain the original winner.
+    top.sort((a, b) => a.order - b.order);
+    top.sort((a, b) => b.score - a.score);
+    // Fine: search around the best few, first on a middle level, then at
+    // full size, over scale and position together.
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const grid = (c, lv, ds, steps, dt, reach) => {
@@ -254,96 +402,6 @@
       }
       return best;
     };
-    // hint: where the board was in the last picture of this size (Auto
-    // Screenshot Mode's frames of one window keep it in place). Checked at
-    // full size first, and taken after the last fine step when it still
-    // matches as a board does: that skips the search over every scale, most
-    // of a reading's time (d8's profile: 63%).
-    const hint = opts && opts.hint;
-    if (hint && hint.w === W && hint.h === H) {
-      const was = { s: hint.s, tx: hint.tx, ty: hint.ty, score: score(levels[0], hint.s, hint.tx, hint.ty, false) };
-      if (was.score >= 0.81 && was.score >= hint.score - 0.05) return Object.assign(grid(was, levels[0], 0.0025, 3, 0.5, 3), { hinted: true });
-    }
-    while (levels[levels.length - 1].w > 120 && levels[levels.length - 1].h > 60) {
-      const l = levels[levels.length - 1];
-      const d = half(l.g, l.w, l.h);
-      levels.push({ g: d.g, w: d.w, h: d.h, f: l.f * 2 });
-    }
-    // Coarse: every scale the board could appear at, on a small level, with
-    // a quarter of the points. The board spans most of a screenshot's width
-    // when cropped to it, and about half in a full-screen one.
-    const coarse = { pts: [], tv: null };
-    const keepIdx = [];
-    for (let i = 0; i < n; i += 4) keepIdx.push(i);
-    const cn = keepIdx.length;
-    const ctv = new Float32Array(cn);
-    let cmean = 0;
-    for (const i of keepIdx) cmean += pts[i][2];
-    cmean /= cn;
-    let cnorm = 0;
-    keepIdx.forEach((i, j) => {
-      ctv[j] = pts[i][2] - cmean;
-      cnorm += ctv[j] * ctv[j];
-    });
-    cnorm = Math.sqrt(cnorm);
-    for (let j = 0; j < cn; j++) ctv[j] /= cnorm;
-    coarse.pts = keepIdx.map((i) => pts[i]);
-    const coarseScore = (lv, s, ox, oy) => {
-      let sx = 0;
-      let sxx = 0;
-      let sxt = 0;
-      const k = s / lv.f;
-      for (let j = 0; j < cn; j++) {
-        let xi = (ox + coarse.pts[j][0] * k) | 0;
-        let yi = (oy + coarse.pts[j][1] * k) | 0;
-        if (xi < 0) xi = 0;
-        else if (xi >= lv.w) xi = lv.w - 1;
-        if (yi < 0) yi = 0;
-        else if (yi >= lv.h) yi = lv.h - 1;
-        const v = lv.g[yi * lv.w + xi];
-        sx += v;
-        sxx += v * v;
-        sxt += v * ctv[j];
-      }
-      const varx = sxx - (sx * sx) / cn;
-      return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
-    };
-    // The board spans at least 30% of the width, or 35% of the height: on
-    // a 32:9 screen (5120x1440) only about 27% of the width (report 144).
-    // The scales from 30% of the width up stay as they were (a step moved
-    // turns a reading near a threshold), the rest go on below them.
-    const sMin = Math.max(0.12, (0.3 * W) / bw);
-    const sLow = Math.max(0.12, Math.min(sMin, (0.35 * H) / bh));
-    const sMax = Math.min(8, (1.1 * Math.max(W / bw, H / bh)));
-    const scales = [];
-    for (let s = sMin; s <= sMax; s *= 1.05) scales.push(s);
-    for (let s = sMin / 1.05; s >= sLow; s /= 1.05) scales.push(s);
-    const top = [];
-    for (const s of scales) {
-      // The coarsest level that still shows the frame's detail.
-      let L = 0;
-      while (L + 1 < levels.length && s / levels[L + 1].f >= 0.2) L += 1;
-      const lv = levels[L];
-      const k = s / lv.f;
-      // Allow a little of the board's edge to fall outside the picture.
-      const ox0 = Math.ceil(-minX * k - 0.06 * bw * k);
-      const ox1 = Math.floor(lv.w - 1 - maxX * k + 0.06 * bw * k);
-      const oy0 = Math.ceil(-minY * k - 0.08 * bh * k);
-      const oy1 = Math.floor(lv.h - 1 - maxY * k + 0.08 * bh * k);
-      if (ox1 < ox0 || oy1 < oy0) continue;
-      let best = null;
-      for (let oy = oy0; oy <= oy1; oy++) {
-        for (let ox = ox0; ox <= ox1; ox++) {
-          const sc = coarseScore(lv, s, ox, oy);
-          if (!best || sc > best.score) best = { ox, oy, score: sc };
-        }
-      }
-      if (best) top.push({ s, tx: best.ox * lv.f, ty: best.oy * lv.f, f: lv.f, score: best.score });
-    }
-    if (!top.length) return null;
-    top.sort((a, b) => b.score - a.score);
-    // Fine: search around the best few, first on a middle level, then at
-    // full size.
     let best = null;
     for (const c of top.slice(0, 5)) {
       let L = 0;
@@ -355,6 +413,31 @@
       if (!best || cur.score > best.score) best = cur;
     }
     return best;
+  }
+
+  function locateBoard(img, gray, ref, sharp) {
+    const prepared = prepareBoardSearch(img, gray, ref, sharp);
+    return refineBoardSearch(prepared, coarseBoardSearch(prepared));
+  }
+
+  // Validate a calibrated layout against fresh frame samples. Check each
+  // quarter independently so one matching corner cannot hide a moved board.
+  function scoreBoardAt(prepared, loc) {
+    const { pts, n, tv, levels, minX, maxX, minY, maxY } = prepared;
+    const lv = levels[0], cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    let sx = 0, sxx = 0, sxt = 0;
+    const quarters = Array.from({ length: 4 }, () => [0, 0, 0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], v = sample(lv.g, lv.w, lv.h, loc.tx + p[0] * loc.s, loc.ty + p[1] * loc.s);
+      sx += v; sxx += v * v; sxt += v * tv[i];
+      const q = quarters[(p[0] >= cx ? 1 : 0) + (p[1] >= cy ? 2 : 0)];
+      q[0]++; q[1] += v; q[2] += p[2]; q[3] += v * v; q[4] += p[2] * p[2]; q[5] += v * p[2];
+    }
+    const variance = sxx - sx * sx / n;
+    return { score: variance > 1e-6 ? sxt / Math.sqrt(variance) : -1, quarters: quarters.map(([count, a, b, aa, bb, ab]) => {
+      const variance = (aa - a * a / count) * (bb - b * b / count);
+      return count >= 20 && variance > 1e-6 ? (ab - a * b / count) / Math.sqrt(variance) : -1;
+    }) };
   }
 
   // ---------- Reading cells ----------
@@ -473,8 +556,32 @@
   }
 
   const isJaws = (h, s, v) => (h < 16 || h > 340) && s > 0.4 && v > 0.55;
-  const isOrange = (h, s, v) => h >= 18 && h <= 46 && s > 0.6 && v > 0.55;
+  // Both marker hues lie strictly between red and yellow. Most background
+  // pixels can be rejected before hue calculation; retain the HSV arithmetic
+  // and thresholds exactly for the remaining pixels, without temporary arrays.
   const isGold = (h, s, v) => h >= 32 && h <= 56 && s > 0.38 && s < 0.9 && v > 0.5;
+  function warmPixel(r, g, b, gold) {
+    if (r <= g || g < b) return false;
+    const d = r - b, saturation = d / r, value = r / 255;
+    if (gold ? saturation <= 0.38 || saturation >= 0.9 || value <= 0.5 : saturation <= 0.6 || value <= 0.55) return false;
+    const hue = (((g - b) / d) % 6 + 6) % 6 * 60;
+    return gold ? hue >= 32 && hue <= 56 : hue >= 18 && hue <= 46;
+  }
+
+  function warmBlobs(img, x0, y0, x1, y1, gold) {
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(img.width - 1, Math.ceil(x1)); y1 = Math.min(img.height - 1, Math.ceil(y1));
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    if (w <= 0 || h <= 0) return [];
+    const mask = new Uint8Array(w * h), data = img.data;
+    for (let y = 0; y < h; y++) {
+      let pixel = ((y0 + y) * img.width + x0) * 4;
+      for (let x = 0; x < w; x++, pixel += 4) {
+        if (warmPixel(data[pixel], data[pixel + 1], data[pixel + 2], gold)) mask[y * w + x] = 1;
+      }
+    }
+    return maskBlobs(mask, w, h, x0, y0);
+  }
 
   // A locked door whose inmate's rarity shows: a "?" portrait over the
   // padlock (Crow Whispers, the Scales, the "below Rare" event), with red
@@ -575,10 +682,7 @@
     const corners = [[0.15, -0.15], [4.85, -0.15], [4.85, 2.3], [0.15, 2.3]].map(([u, v]) => at(loc, u, v));
     const xs = corners.map((c) => c[0]);
     const ys = corners.map((c) => c[1]);
-    const found = blobs(img, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), (px, py) => {
-      const [r, g, b] = rgbAt(img, px, py);
-      return isGold(...hsv(r, g, b));
-    });
+    const found = warmBlobs(img, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), true);
     const k = loc.s;
     // The arrow's dark inner lines split it into pieces: group nearby ones.
     const groups = [];
@@ -620,10 +724,7 @@
     const corners = [[-0.7, -1.1], [5.7, -1.1], [5.7, 3.5], [-0.7, 3.5]].map(([u, v]) => at(loc, u, v));
     const xs = corners.map((c) => c[0]);
     const ys = corners.map((c) => c[1]);
-    const found = blobs(img, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), (px, py) => {
-      const [r, g, b] = rgbAt(img, px, py);
-      return isOrange(...hsv(r, g, b));
-    });
+    const found = warmBlobs(img, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), false);
     const out = new Set();
     for (const b of found) {
       const k = loc.s;
@@ -660,8 +761,26 @@
 
   // Light, unsaturated glyphs in a box, grouped into lines, words and the
   // separate pieces of a line (like one card's text).
-  function textLines(img, x0, y0, x1, y1, opts) {
-    const o = Object.assign({ minH: 6, maxH: 60, s: 0.34 }, opts || {});
+  function textMask(img, x0, y0, w, h, lum, around, saturation) {
+    const mask = new Uint8Array(w * h), data = img.data;
+    for (let y = 0; y < h; y++) {
+      let pixel = ((y0 + y) * img.width + x0) * 4;
+      const row = y * w;
+      for (let x = 0; x < w; x++, pixel += 4) {
+        const i = row + x, l = lum[i];
+        if (l < 45 || l - around[i] < Math.max(16, 0.3 * around[i])) continue;
+        const r = data[pixel], g = data[pixel + 1], b = data[pixel + 2];
+        const max = Math.max(r, g, b);
+        // Preserve the exact saturation formula used by the generic path.
+        if ((max ? (max - Math.min(r, g, b)) / max : 0) < saturation) mask[i] = 1;
+      }
+    }
+    return mask;
+  }
+
+  function prepareText(img, x0, y0, x1, y1) {
+    // Reuse this snapshot only within one contrast sweep. A later read
+    // prepares fresh pixels even if the caller reuses the image object.
     // Text is any unsaturated pixel clearly brighter than its surroundings:
     // the day counter is dim grey, the card text near white.
     x0 = Math.max(0, Math.floor(x0));
@@ -670,20 +789,30 @@
     y1 = Math.min(img.height - 1, Math.ceil(y1));
     const w = x1 - x0 + 1;
     const h = y1 - y0 + 1;
-    if (w < 4 || h < 4) return [];
+    if (w < 4 || h < 4) return null;
     const lum = new Float32Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const [r, g, b] = rgbAt(img, x0 + x, y0 + y);
-      lum[y * w + x] = 0.299 * r + 0.587 * g + 0.114 * b;
+    const data = img.data;
+    for (let y = 0; y < h; y++) {
+      let pixel = ((y0 + y) * img.width + x0) * 4;
+      const row = y * w;
+      for (let x = 0; x < w; x++, pixel += 4) lum[row + x] = 0.299 * data[pixel] + 0.587 * data[pixel + 1] + 0.114 * data[pixel + 2];
     }
+    return { x0, y0, w, h, lum };
+  }
+
+  function textLines(img, x0, y0, x1, y1, opts) {
+    return preparedTextLines(img, prepareText(img, x0, y0, x1, y1), opts);
+  }
+
+  function preparedTextLines(img, prepared, opts) {
+    if (!prepared) return [];
+    const o = Object.assign({ minH: 6, maxH: 60, s: 0.34 }, opts || {});
+    const { x0, y0, w, h, lum } = prepared;
     const around = blur(lum, w, h, o.r || Math.max(3, Math.round(o.maxH / 3)));
-    const found = blobs(img, x0, y0, x1, y1, (px, py) => {
-      const i = (py - y0) * w + (px - x0);
-      const l = lum[i];
-      if (l < 45 || l - around[i] < Math.max(16, 0.3 * around[i])) return false;
-      const [r, g, b] = rgbAt(img, px, py);
-      return hsv(r, g, b)[1] < o.s;
-    }).filter((b) => b.h >= o.minH * 0.45 && b.h <= o.maxH && b.w <= o.maxH * 1.2 && b.n >= 4);
+    // Build the text mask directly: the generic blob predicate otherwise
+    // repeats coordinate conversions and a callback for every pixel.
+    const mask = textMask(img, x0, y0, w, h, lum, around, o.s);
+    const found = maskBlobs(mask, w, h, x0, y0).filter((b) => b.h >= o.minH * 0.45 && b.h <= o.maxH && b.w <= o.maxH * 1.2 && b.n >= 4);
     // Lines: glyphs whose vertical middles line up.
     found.sort((a, b) => (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2);
     const lines = [];
@@ -965,8 +1094,9 @@
     let best = [];
     const pieces = [];
     // Text size follows the UI scale, so try contrast windows of each size.
+    const text = prepareText(img, 0, bottom, img.width - 1, img.height - 1);
     for (const r of textRadii(img)) {
-      const lines = textLines(img, 0, bottom, img.width - 1, img.height - 1, { minH: 6, maxH: Math.max(48, img.height * 0.07), r });
+      const lines = preparedTextLines(img, text, { minH: 6, maxH: Math.max(48, img.height * 0.07), r });
       const cards = [];
       for (const line of lines) {
         for (const p of line.pieces) {
@@ -1241,7 +1371,8 @@
     let best = null;
     const lines = [];
     // The number turns red in the last days, so colored glyphs count too.
-    for (const r of textRadii(img)) lines.push(...textLines(img, img.width * 0.2, 0, img.width * 0.8, top, { minH: 8, maxH: Math.max(70, img.height * 0.1), r, s: 1.01 }));
+    const text = prepareText(img, img.width * 0.2, 0, img.width * 0.8, top);
+    for (const r of textRadii(img)) lines.push(...preparedTextLines(img, text, { minH: 8, maxH: Math.max(70, img.height * 0.1), r, s: 1.01 }));
     // The day number is the biggest text over the board.
     const tallest = Math.max(1, ...lines.flatMap((l) => l.glyphs.filter((g) => g.w >= 0.25 * g.h).map((g) => g.h)));
     for (const line of lines) {
@@ -1283,7 +1414,8 @@
   // can come apart into extra pieces.
   function findLabel(img, box, letters, shape) {
     const lines = [];
-    for (const r of textRadii(img)) lines.push(...textLines(img, box[0], box[1], box[2], box[3], { minH: 6, maxH: Math.max(40, img.height * 0.06), r, s: 0.5 }));
+    const text = prepareText(img, box[0], box[1], box[2], box[3]);
+    for (const r of textRadii(img)) lines.push(...preparedTextLines(img, text, { minH: 6, maxH: Math.max(40, img.height * 0.06), r, s: 0.5 }));
     let best = null;
     for (const line of lines) {
       for (const p of line.pieces) {
@@ -1729,8 +1861,7 @@
   // screenshots of the live game (tools/pick-build.js).
   function withPanelIcons(ref, pick) {
     if (!pick) return ref;
-    // The start cards' badges come from the same labeled screenshots.
-    return Object.assign({}, ref, { tools: ref.tools.concat(pick.icons || []), badges: (ref.badges || []).concat(pick.badges || []) });
+    return Object.assign({}, ref, { tools: ref.tools.concat(pick.icons || []), toolNames: { ...ref.toolNames, ...pick.names }, badges: (ref.badges || []).concat(pick.badges || []) });
   }
 
   // ---------- The run's objective ----------
@@ -1750,8 +1881,9 @@
   const ONE_WORD = new Set(Object.values(OBJECTIVE_WORDS).flat().filter((f) => f.length === 1).map((f) => f[0]));
   function readObjectiveTitle(img) {
     let best = null;
+    const text = prepareText(img, img.width * 0.25, img.height * 0.12, img.width * 0.75, img.height * 0.4);
     for (const r of textRadii(img)) {
-      for (const line of textLines(img, img.width * 0.25, img.height * 0.12, img.width * 0.75, img.height * 0.4, { minH: 6, maxH: Math.max(48, img.height * 0.07), r })) {
+      for (const line of preparedTextLines(img, text, { minH: 6, maxH: Math.max(48, img.height * 0.07), r })) {
         for (const p of line.pieces) {
           const words = p.words.map((w) => w.glyphs.length);
           if ((words.length >= 2 || ONE_WORD.has(words[0])) && (!best || line.h > best.h)) best = { h: line.h, words };
@@ -1807,8 +1939,9 @@
       const tail = w.slice(-want.length);
       return tail.length === want.length && tail.reduce((a, n, i) => a + Math.abs(n - want[i]), 0) <= 2;
     };
+    const text = prepareText(img, x0, bottom, x1, img.height - 1);
     for (const r of textRadii(img)) {
-      for (const line of textLines(img, x0, bottom, x1, img.height - 1, { minH: 6, maxH: Math.max(48, img.height * 0.07), r })) {
+      for (const line of preparedTextLines(img, text, { minH: 6, maxH: Math.max(48, img.height * 0.07), r })) {
         for (const p of line.pieces) {
           const n = p.words.reduce((a, w) => a + w.glyphs.length, 0);
           const span = (p.x1 - p.x0) / Math.max(1, line.h);
@@ -1900,9 +2033,20 @@
     const t0 = Date.now();
     const gray = grayOf(img);
     const sharp = blur(gray, img.width, img.height, 1);
-    const cache = opts && opts.cache;
-    let loc = locateBoard(img, gray, ref, { sharp, hint: cache && cache.loc });
-    if (cache && loc && loc.score >= 0.81) cache.loc = { w: img.width, h: img.height, s: loc.s, tx: loc.tx, ty: loc.ty, score: loc.score };
+    let loc = locateBoard(img, gray, ref, sharp);
+    return scanLocated(img, ref, gray, sharp, loc, t0, null, opts);
+  }
+
+  function readBoardCells(img, sharp, loc, ref) {
+    const cells = [];
+    for (let n = 0; n < 16; n++) cells.push(readCell(img, sharp, loc, n, ref));
+    const warden = findWarden(img, loc);
+    // An event can stand beside an inmate as well as a locked door.
+    for (const n of findEvents(img, loc, cells, warden)) if (cells[n].kind === 'locked' || cells[n].kind === 'inmate') cells[n].event = true;
+    return { cells, warden };
+  }
+
+  function scanLocated(img, ref, gray, sharp, loc, t0 = Date.now(), preRead, opts) {
     // Real boards match their frame at 0.81 or more at every size tested;
     // instrument picks, popups and other screens stay near 0.5 or under. A
     // darkened board (a devour's meal pick) also matches weakly, but its
@@ -1913,17 +2057,13 @@
     }
     const notes = [];
     if (!loc || (!loc.byLabels && loc.score < 0.65)) return { ok: false, reason: 'No Tartarus prison board found in this picture.', loc, ms: Date.now() - t0 };
-    const cells = [];
-    for (let n = 0; n < 16; n++) cells.push(readCell(img, sharp, loc, n, ref));
-    const warden = findWarden(img, loc);
-    // An open cell can hold an event beside its inmate (the cell popup's
-    // "Can trigger Prison Incident"): 8 saved screenshots show one.
-    for (const n of findEvents(img, loc, cells, warden)) if (cells[n].kind === 'locked' || cells[n].kind === 'inmate') cells[n].event = true;
-    const doors = readDoors(img, sharp, loc, ref, !!(opts && opts.lang && opts.lang !== 'en'), cells);
-    const days = readDays(img, sharp, loc, ref);
-    const tools = readTools(img, loc, ref);
+    const { cells, warden } = preRead && preRead.board || readBoardCells(img, sharp, loc, ref);
+    const panels = preRead && preRead.panels;
+    const doors = panels ? panels.doors : readDoors(img, sharp, loc, ref, !!(opts && opts.lang && opts.lang !== 'en'), cells);
+    const days = panels ? panels.days : readDays(img, sharp, loc, ref);
+    const tools = panels ? panels.tools : readTools(img, loc, ref);
     const badge = readBadge(img, tools.label, ref);
-    const chromatic = readChromatic(img, loc);
+    const chromatic = panels ? panels.chromatic : readChromatic(img, loc);
     const statusView = !doors && readStatusView(img, loc);
     const objective = objectiveBox(img, loc, tools);
     const chain = readChainScreen(img, loc, cells, warden);
@@ -1959,7 +2099,9 @@
     return { ok: true, loc, cells, warden, doors, days, tools, badge, chromatic, objective, chain, decision, statusView, notes, ms: Date.now() - t0 };
   }
 
-  const api = { scan, scanPick, pickArtBox, pickRerollShown, locateBoard, readCell, findWarden, findToolIcons, readDoors, readDays, doorCards, dayNumber, prefixVector, textLines, glyphVector, faceVector, artFeature, similarity, hsv, blobs, at, gridOf, scaleAt, grayOf, blur, RING, H0, ARROW, FACE, GLYPH, locateByLabels, readChainScreen, readDecision, readObjectiveTitle, withPanelIcons, badgeBox, readBadge };
+  const api = { scan, scanLocated, readBoardCells, readTools, readChromatic, prepareBoardSearch, coarseBoardSearch, refineBoardSearch, scanPick, pickArtBox, pickRerollShown, locateBoard, readCell, findWarden, findToolIcons, readDoors, readDays, doorCards, dayNumber, prefixVector, textLines, glyphVector, faceVector, artFeature, similarity, hsv, blobs, at, gridOf, scaleAt, grayOf, blur, RING, H0, ARROW, FACE, GLYPH, locateByLabels, readChainScreen, readDecision, readObjectiveTitle, withPanelIcons };
+  api.scoreBoardAt = scoreBoardAt;
+  api.badgeBox = badgeBox; api.readBadge = readBadge;
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TartarusScan = api;
 })(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis);

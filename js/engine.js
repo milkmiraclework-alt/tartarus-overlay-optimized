@@ -54,6 +54,23 @@
     return Number.isFinite(tier) && tier >= from && SECOND_MEAL[beast] ? first.concat(SECOND_MEAL[beast]) : first;
   };
 
+  // Legality checks only need membership. Avoid allocating a combined diet
+  // for every potential eater/meal pair in every simulated position.
+  const countersMeal = (state, beast, tier, meal) => {
+    if ((FOOD_CHAIN[beast] || []).includes(meal)) return true;
+    const second = SECOND_MEAL[beast];
+    if (!second || !Number.isFinite(tier)) return false;
+    const from = cageFight(state) ? 0 : state && state.params && Number.isFinite(state.params.doubleEatTier) ? state.params.doubleEatTier : DEFAULT_PARAMS.doubleEatTier;
+    return tier >= from && second.includes(meal);
+  };
+
+  // Convoy pressure each inmate adds to an escort, by tier.
+  const PRESSURE = [2, 4, 8, 16, 32, 65];
+  const ESCORTS = {
+    light: { name: 'Light escort', cap: 36, cost: 1 },
+    heavy: { name: 'Heavy escort', cap: 72, cost: 3 },
+  };
+
   // Relative worth of one inmate per tier; the advisor ranks moves with it.
   const WORTH = [1, 3, 9, 27, 81, 400];
 
@@ -524,7 +541,7 @@
   function canEat(state, eater, meal) {
     if (!eater || !meal || eater.id === meal.id || eater.tier >= RAINBOW) return false;
     // The beasts this eater counters: its meals in the food chain.
-    const counters = eatsOf(state, eater.beast, eater.tier).includes(meal.beast) || (eater.beast === 'rat' && meal.beast === 'rat' && has(state, 'skewer'));
+    const counters = countersMeal(state, eater.beast, eater.tier, meal.beast) || (eater.beast === 'rat' && meal.beast === 'rat' && has(state, 'skewer'));
     if (eater.tier !== meal.tier) {
       if (meal.tier < eater.tier && counters && cageFight(state)) return true;
       if (meal.tier > eater.tier && counters && eater.beast === 'mammoth' && has(state, 'maul')) return true;
@@ -1056,6 +1073,20 @@
       else if (c.sealed && c.scratch && eater.beast === 'wolf' && c.hidden && c.hidden.tier === eater.tier && eater.tier < RAINBOW) out.push({ cell: c.n, scratch: true });
     }
     return out;
+  }
+
+  // Gift scoring asks only whether a meal exists. Stop at the first match
+  // instead of building and discarding the full list of move objects.
+  function hasDevourOption(state, n) {
+    const cell = state.cells[n];
+    if (!cell || cell.sealed || !cell.inmate) return false;
+    const eater = cell.inmate;
+    for (const c of state.cells) {
+      if (c === cell) continue;
+      if (!c.sealed && canEat(state, eater, c.inmate)) return true;
+      if (c.sealed && c.scratch && eater.beast === 'wolf' && c.hidden && c.hidden.tier === eater.tier && eater.tier < RAINBOW) return true;
+    }
+    return false;
   }
 
   // The sure part of a devour's gain; Rusty Saw and Avenger's Casket roll later.
@@ -1778,7 +1809,7 @@
     if (id === 'ring') {
       for (const c of shuffle(state, state.cells.filter((x) => x.sealed)).slice(0, 3)) openCell(state, c, 'side', events);
     } else if (id === 'horn') {
-      for (const inmateId of boardInmates(state).filter((i) => devourOptions(state, cellOf(state, i.id).n).length).map((i) => i.id)) {
+      for (const inmateId of boardInmates(state).filter((i) => hasDevourOption(state, cellOf(state, i.id).n)).map((i) => i.id)) {
         const cell = boardCellOf(state, inmateId);
         if (!cell) continue;
         const options = devourOptions(state, cell.n).filter((o) => !o.scratch);
@@ -1789,10 +1820,10 @@
     } else if (id === 'wine') {
       for (const i of boardInmates(state).filter((x) => x.tier < 3)) if (boardCellOf(state, i.id)) promote(state, i, 1, false, events);
     } else if (id === 'brand') {
-      const hungry = shuffle(state, boardInmates(state).filter((i) => !devourOptions(state, cellOf(state, i.id).n).length)).slice(0, 4);
+      const hungry = shuffle(state, boardInmates(state).filter((i) => !hasDevourOption(state, cellOf(state, i.id).n))).slice(0, 4);
       for (const i of hungry) {
         const cell = boardCellOf(state, i.id);
-        if (!cell || devourOptions(state, cell.n).length) continue;
+        if (!cell || hasDevourOption(state, cell.n)) continue;
         const possible = BEASTS.filter((b) => boardInmates(state).some((o) => canEat(state, { id: i.id, beast: b, tier: i.tier }, o)));
         if (possible.length) {
           i.beast = pickOne(state, possible);
@@ -1951,8 +1982,8 @@
       case 'stake': return 10;
       case 'coin': return 10;
       case 'wine': return board.filter((i) => i.tier < 3).length * 4;
-      case 'horn': return board.filter((i) => devourOptions(state, cellOf(state, i.id).n).length).length * 6;
-      case 'brand': return board.filter((i) => !devourOptions(state, cellOf(state, i.id).n).length).length * 5;
+      case 'horn': return board.filter((i) => hasDevourOption(state, cellOf(state, i.id).n)).length * 6;
+      case 'brand': return board.filter((i) => !hasDevourOption(state, cellOf(state, i.id).n)).length * 5;
       default: return 0;
     }
   }
@@ -2187,7 +2218,7 @@
     moveWarden: bounded(moveWarden),
     addTool: bounded(addTool),
     removeTool: bounded(removeTool),
-    patrolOptions, clockwisePath, devourOptions, startOptions, chainOptions, canStopChain, cageFight, gainFor, executionVictims, canEat, eatsOf, canDevourNow, canSwapNow, canHuntNow, huntTargets, canReroll,
+    patrolOptions, clockwisePath, devourOptions, hasDevourOption, startOptions, chainOptions, canStopChain, cageFight, gainFor, executionVictims, canEat, eatsOf, canDevourNow, canSwapNow, canHuntNow, huntTargets, canReroll,
     linkOf, cellOf, boardInmates, rosterOf, advise, limits,
     toolText, toolName, eventName, describe, tierName, beastName, cellLabel, plural, stepsBetween, scarceBeasts, lowestInmates,
   };

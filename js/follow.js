@@ -26,34 +26,7 @@
   // (out of 20) and lights the cells you can go to. A picture 1.5 seconds
   // after either shows the screen settled, while you choose. The results
   // screen at the end writes the day line too, with max=0, and is left out.
-  const DEFAULT_RULES = [
-    '# kind | pattern | settle ms  (one trigger a line; # starts a note)',
-    '# Tartarus Prison is S16 in the log. A run\'s objective, when it shows one:',
-    'objective | S16BoardTaskPop Run | 1500',
-    '# The pick of 3 instruments, and after a re-roll:',
-    'instruments | S16BoardRelicPop Run | 1500',
-    'instruments | Btn_S16Board_RelicPop_Reroll | 2000',
-    '# Each day, once its banner closes, and after a move, once its cards come up:',
-    'board | \\[S16LastDay\\] check cur=\\d+ max=[1-9] | 1500',
-    'board | UI_S16_Card_Up | 1500',
-    '# After an action in the cell, and after each bite of a consume chain',
-    '# (the next meal to pick, or the board after the chain), once it plays',
-    "# out; unless the day ends, as a new day's banner drops a picture still",
-    '# waiting (skip):',
-    'board | Btn_S16Board_ActionCell | 2000',
-    'board | UI_S16_Click_Eat | 2500',
-    'skip | S16BoardNewDayPop Run | 0',
-    "# The Warden's Treasure, which a Chromatic prisoner opens, and the board",
-    '# once it closes, with the gift taken (a consume can open two in a row):',
-    'treasure | S16BoardColoredPop Run | 1500',
-    'board | S16BoardColoredPop Destory | 600',
-    "# The game's Speed-up button: no picture, it flips 'Speed-up is on' here:",
-    'speed | Btn_S16Board_Top_Speed | 0',
-    '# A Cancel (a consume chain stopped), once the board settles:',
-    'board | UI_S16_Click_Cancel | 1500',
-    "# After an event's Confirm (the Sewer Ratway's cell pick, or the board after it):",
-    'board | Btn_S16Board_EventPop_Confirm | 1500',
-  ].join('\n');
+  const DEFAULT_RULES = C.DEFAULT_RULES;
   // The prison's own events, for working out more triggers: its buttons,
   // sounds and screens, without the lines that repeat them.
   const DEFAULT_WATCH = '^(?!.*(LogDataTable|AssetLoad@|PageStack@|PageBase@|PageView@|CardMotion|CardPose|BGM_))(?=.*S16)';
@@ -291,16 +264,6 @@
   let lastAction = 0;
   let lastEat = 0;
   let lastGift = 0; // a Warden's Treasure gift confirmed
-  // Warden's Treasure picks, for the analyzer to count what's waiting (3 a
-  // Treasure with Opulence): each Rainbow reaching the vault, and each gift
-  // confirmed. A Rainbow plays its sound and lights a vault cell, a moment
-  // apart; either counts it, once. A double-click on Confirm counts once: a
-  // pick is its popup opening, then Confirm.
-  const gifts = { rainbows: 0, taken: 0 };
-  let giftOpen = false;
-  const fly = { n: 0, at: 0 }; // Rainbow sounds not yet matched by a vault cell
-  const lit = new Map(); // vault cell -> when it lit
-
   // The Treasure's popup closing with no gift confirmed just before: the
   // player pressed View Prison Status, and the Treasure still waits.
   function treasureViewed(hits) {
@@ -317,7 +280,7 @@
   function tell() {
     if (!channel) return;
     const st = C.state;
-    channel.postMessage({ type: 'status', from: me, log: st.log, file: st.file, window: st.window, last: lastPicture, triggers: triggerCount, detail: st.detail, hits: st.hits, lang: st.lang });
+    channel.postMessage({ type: 'status', from: me, log: st.log, file: st.file, window: st.window, last: lastPicture, triggers: triggerCount, detail: st.detail, hits: st.hits });
   }
   const NO_EVENTS = 'No game events in the log yet. In the game, press Esc and click Enable Log (under Account Related), then log out and back in.';
   const seen = []; // newest first: { at, line, kind }
@@ -445,7 +408,7 @@
       if (c.kind === 'treasure' && prefs.read) {
         const to = target();
         if (to) {
-          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh: false, after: treasureAfter(c.hits), gifts: Object.assign({}, gifts), blob: null });
+          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh: false, after: treasureAfter(c.hits), blob: null });
           c.sent = true;
         }
       }
@@ -468,8 +431,7 @@
           const after = c.kind === 'treasure' ? treasureAfter(c.hits) : '';
           // treasureView: the board, seen while a Warden's Treasure waits.
           const treasureView = c.kind === 'board' && treasureViewed(c.hits);
-          // gifts: the Treasure's counts (Rainbows, picks confirmed).
-          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh, after, treasureView, gifts: Object.assign({}, gifts), pixels: pix, blob });
+          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh, after, treasureView, pixels: pix, blob });
           c.sent = true;
         }
       }
@@ -512,24 +474,7 @@
   C.on('seen', (s) => {
     if (/Btn_S16Board_ActionCell/.test(s.line)) lastAction = stampMs(s.at);
     if (/Eating_red_screen/.test(s.line)) lastEat = stampMs(s.at);
-    if (/ColoredPop_Confirm/.test(s.line)) {
-      lastGift = stampMs(s.at);
-      if (giftOpen) gifts.taken += 1;
-      giftOpen = false;
-    }
-    if (/S16BoardColoredPop Run\b/.test(s.line)) giftOpen = true;
-    const vault = /Anim_Archive_LightUp, Id = (\S+)/.exec(s.line);
-    const t = vault || /UI_S16_Premium_Quality_Fly/.test(s.line) ? stampMs(s.at) : 0;
-    if (t && t - fly.at > 1000) fly.n = 0;
-    if (vault && !(lit.has(vault[1]) && t - lit.get(vault[1]) < 2000)) {
-      lit.set(vault[1], t);
-      if (fly.n > 0) fly.n -= 1;
-      else gifts.rainbows += 1;
-    } else if (!vault && t) {
-      gifts.rainbows += 1;
-      fly.n += 1;
-      fly.at = t;
-    }
+    if (/ColoredPop_Confirm/.test(s.line)) lastGift = stampMs(s.at);
     seen.unshift(s);
     seen.length = Math.min(seen.length, 200);
     soon(renderSeen);

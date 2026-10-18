@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Tartarus Overlay settings</title>
+<style>
+body{background:#11191d;color:#e8eee9;font:16px system-ui;margin:24px;line-height:1.5}button{padding:10px 16px;background:#8cd4b7;border:0;border-radius:6px;cursor:pointer;margin:8px 8px 8px 0}label{display:block;margin:16px 0}small{color:#a9b8b1}
+</style>
+<h2>Tartarus Overlay</h2>
+<p>The overlay reads only your selected game log and captures the Torchlight: Infinite window after game events. Screenshots stay on this PC. You can stop capture here at any time.</p>
+<p id="status">Loading…</p>
+<button id="enable">Enable game capture</button><button id="disable">Stop capture</button>
+<label><input id="speed" type="checkbox"> Speed-up is on in the game</label>
+<button id="log">Choose UE_game.log</button>
+<p id="follow-enable-log"><small>Enable the game's log: press Esc, click Enable Log, then log out and back in. Play in borderless or windowed mode.</small></p>
+<p><small>Close this window to keep playing with the overlay. Use the tray menu to correct a board or quit.</small></p>
+<script src="settings.js"></script></html>

@@ -740,3 +740,316 @@ Without forcing, a chest canvas now completes 6.8 objectives instead of 1.7, and
 - **Never** take the re-roll effect while a chest is on the canvas.
 - **Without a chest:** aim each objective at the highest paints (Layer's +1 is best), and force a stuck one when it pushes paints toward Lv7 by more than the break costs on average. Never force with a Lv7 chest on the canvas.
 - **Forcing:** when an objective is stuck, force it if it feeds the chest, or to get a new Coloring Paint while the chest has room. Only with at least 6 paints on the canvas, so the break hits the chest 1 time in 6 or less. Thresholds from 4 to 8 score within 2 points of each other. Splitting the rule (forcing for the chest sooner, for a new Coloring Paint later) or capping forces scored 2 to 8 points worse.
+
+
+# Local optimization checks
+
+## Solver checks and timing
+
+`node tools/solver-check.js` checks isolated state copies, legal decisions
+across seeded drills, all instruments, starting cards and challenge loadouts,
+deterministic Monte Carlo results, and the actual worker's streamed results
+and replacement of an active calculation. It needs no npm dependencies.
+
+Add `--bench` for median timings over five runs of state copying, move
+selection and complete Monte Carlo checks. For a before/after comparison,
+save the previous `solver.js` beside copies of `engine.js` and
+`tool-combos.js` in `sandbox/`, then run:
+
+```
+node tools/solver-check.js --baseline sandbox/solver-before.js --bench
+```
+
+With a baseline, the check also requires every decision, Monte Carlo sample
+and resulting ranking to match. Timing varies by machine; the rollout count
+and random seeds stay fixed. The October 17 optimizations measured 2.90x
+faster copies, 1.99x faster move selection and 1.92x faster full checks on
+Node 22 against the original solver, with the same samples and rankings.
+The second pass replaces repeated strategy-parameter assembly, reuses four
+immutable food-chain tables, and skips unnecessary chain memo keys and
+readiness calculations. Full checks were 1.43x faster than the first pass
+in Node and 1.64x faster in a separate Edge benchmark. Both normal and raw
+Web Workers were also checked in Edge against the main-thread results.
+
+The next solver pass avoids building combined food-chain arrays for legality
+checks, stops meal-existence checks at the first match, and scores simulated
+gifts with just the tier/Rainbow values they use. It retains the same random
+draws and rollout counts. The regression check compares 110,592 eater/meal
+pairs, meal existence against complete move lists, and all engine state and
+log changes along the 17,394 seeded moves against the saved engine too.
+Save `engine.js` with each solver baseline: the comparison now loads that
+baseline's engine separately, so timings include changes to both files.
+Against the preceding local version, the same full-check benchmark measured
+2,182.2 ms before and 1,794.7 ms after (median of five alternating runs on
+Node 22), or 17.8% less calculation time. This measures the test workload;
+it excludes screenshot reading and the game's animation settling interval.
+
+## Capture and reader checks
+
+```
+node tools/capture-check.js
+node tools/readiness-check.js
+node tools/marker-check.js
+node tools/solver-cache-check.js
+node tools/chain-cache-check.js
+node tools/forecast-check.js
+node tools/forecast-menu-check.js
+node tools/scan-check.js --baseline sandbox/scan-before-fast.js --bench
+node tools/scan-parallel-check.js
+node tools/overlay-check.js
+```
+
+The reader baseline is an optional saved copy of `js/scan.js`. These checks
+cover log wakeups during active reads, partial/rotated logs, bounded catchup,
+capture deadlines, exact grayscale/blur/reader output, and the real local
+Electron capture/advice path. The overlay check needs Node 22+ and an installed
+overlay, uses its own profile and stand-in window, and sends no game input.
+
+The fast desktop pipeline removes the follow page and image BroadcastChannel
+hop, transfers frames directly to the reader, and sends structured advice to
+the overlay without parsing HTML. On this machine, native log events arrived
+in 1–3 ms rather than waiting for a one-second poll. The blur stage at
+2600x1462 took about 25 ms versus 50 ms previously, with exact Float32 output;
+successful board reads also reuse that blur instead of computing it twice.
+These are stage measurements, not a claim about total live-game latency.
+
+The next reader pass precomputes the board search's sample coordinates per
+axis and uses translated offsets where every sample is in bounds. It checks
+the exact integer coordinates before taking that path; clipped or differently
+rounded samples use the original lookup. The search still evaluates every
+scale and position, in the same order and with the same correlation arithmetic.
+Text detection computes saturation directly instead of unused hue/value.
+On two saved 2560x1440 game frames, median full-reader times fell from
+2709/3268 ms to 1441/1677 ms (1.88x/1.95x), with identical complete results.
+These are reader-only measurements, excluding animation waits and solving.
+
+For complete before/after reader checks on local decoded screenshots, add
+`--frames sandbox/your-frames --bench`. Each `name.rgba` is row-major RGBA8,
+with width and height in `name.json`. The check compares the full reader
+output, including confidence and geometry, and reports median times after
+warmup. Screenshots and decoded fixtures stay outside version control.
+
+Fast desktop mode also splits the exhaustive coarse board search across
+2–4 persistent workers on machines with at least four logical cores. Only
+the small pyramid levels needed for that search are copied at that stage. Fine matching
+and screen reading keep their existing arithmetic; original candidate order
+is restored before sorting ties. Low-core machines and failed/blocked search
+workers fall back to the serial reader.
+
+`scan-parallel-check.js --frames DIR --baseline previous/scan.js --bench`
+checks actual worker scripts, exact complete results, worker reuse, tied
+scores and failure fallbacks. `overlay-check.js --frames DIR` additionally
+accepts local WebP/PNG/JPEG screenshots and compares serial/parallel readers
+in real Electron, verifying that nested workers run without errors. Two
+2560x1440 frames measured 1115/1057 ms serial versus 737/756 ms parallel in
+that check; these are full-reader times, excluding animations and advice.
+
+The same helper pool now reads independent doors/day, instrument and vault
+panels while the main reader handles cells/warden. Full-resolution pixels
+and grayscale are copied only to the readers that need them. Failed panel
+jobs fall back to serial panel reading and preserve already-read cells.
+The worker check also covers failure during this second stage.
+
+Use `overlay-check.js --frames DIR --reader-baseline sandbox/old-reader`
+to compare against an earlier worker implementation in the same Electron
+run. The baseline directory must contain its scan worker, helper, reader,
+scan-data and pick-data scripts. Two game frames measured 884/970 ms with
+parallel board search alone versus 653/677 ms with parallel panels, with
+exactly matching complete readings. The overlay check also verifies worker
+preparation before the first picture and synchronous advice for one legal
+move, while retaining the complete budget for multi-option checks.
+
+The following reader pass builds text masks with a direct pixel loop and
+shares a region's exact Float32 luminance across the four contrast radii
+within each panel/title read. It keeps all contrast tests, component traversal
+and glyph grouping unchanged, and prepares fresh pixels on every new read.
+In the same Electron run, two 2560x1440 frames measured 718/748 ms with the
+preceding parallel reader versus 614/690 ms after this pass. These are median
+full-reader timings after warmup, with exact complete outputs, excluding
+animation waits and advice calculation. `scan-check.js` also compares text
+and component geometry on 24 color images, clipped/fractional/empty regions
+and multiple contrast/saturation settings, plus the objective title reader.
+
+Fast mode now keeps a calibrated board layout across frames. Fresh reference
+correlation must exceed 0.82 globally and 0.68 in every quarter; a better
+one-pixel neighbour, changed dimensions, weak cell reads or a missing warden
+forces exhaustive reacquisition. Calibration expires after 16 reads or 30
+seconds. Cells, warden and events are still read on every frame. Doors/days,
+instrument and vault panels are reused only when every RGBA byte in their
+input regions (with a blur/interpolation margin) matches the preceding frame.
+No approximate image hash decides panel reuse. In one Electron comparison,
+repeated frames took 242/362 ms versus 743/768 ms with the previous reader,
+with exactly matching complete outputs. Changed frames can keep the layout
+while reading every panel that changed; no hidden game result is predicted.
+In a later run, the transition between the two different saved boards took
+356 ms with tracked geometry and no reused panels, compared with 692 ms for
+the preceding full reader on that board. That transition timing is one
+observation; repeated-frame timings above are medians after warmup.
+
+The original capture deadline remains armed while a separate readiness worker
+probes board screens. Early capture requires a calibrated layout, visible
+high-confidence door cards or a titled decision menu, a changed board versus
+the last successful read, and three stable observations spanning at least
+200 ms. The inmate roster, event marks and warden position must agree too;
+weak/ghost inmate reads or an uncertain warden prevent early capture.
+The recognized board/control state must differ from the last successful
+reading too: hover colors and other pixel-only changes are insufficient.
+Probing starts after 450 ms (scaled by game speed, minimum 250 ms),
+and only for board waits of at least 900 ms. Unknown, darkened, instrument,
+objective and treasure screens keep their original waits. Missing calibration,
+worker errors/timeouts, unstable screens and uncertain controls use the
+original deadline. Action epochs invalidate old probe replies, and each
+bitmap has one owner. Timing records include `settle.mode`, saved waiting
+time and reader calibration/panel-reuse stats. Live animation savings have
+not yet been measured; the automated checks replay events and saved screens.
+
+`readiness-check.js` exercises the detector and capture scheduler, including
+late replies, deadline races, unavailable probes, cancellation and bitmap
+cleanup. Worker checks compare tracked outputs to exhaustive reads and
+exercise moved/resized/missing boards. The Electron check with two saved
+frames also runs the actual readiness worker and analyzer bridge.
+
+The marker reader builds gold/orange masks directly from RGBA pixels, rejecting
+other color sectors before hue calculation and avoiding temporary RGB/HSV
+arrays per pixel. Hue arithmetic, thresholds and component traversal remain
+unchanged. `marker-check.js` compares both masks against the previous HSV
+predicates for every one of the 16,777,216 RGB colors, plus component order and
+geometry on clipped, fractional and empty regions. Complete serial, parallel
+and tracked readings are also compared with the saved preceding reader.
+On two saved 2560x1440 frames, the cells/warden/events stage measured 122/115 ms
+before versus 21/22 ms after (alternating median runs on Node 22). In an
+Electron comparison, complete parallel reads measured 921/883 ms before versus
+783/847 ms after, and readiness probes measured 468 ms before versus 399 ms
+after. These measurements exclude the game's animation wait; actual early
+capture savings still require a live session. The Electron reader baseline
+option also compares probe timings when that baseline contains `ready-worker.js`.
+
+The solver now prepares the fixed tier scale, normalized door odds and
+strategy weights once per calculation slice instead of once per simulated
+move. Private trial copies share read-only game rules and contract definitions,
+while all changing state is copied. Public `clone` stays fully independent,
+and public `playout` callbacks can still change rules between moves. Strategy
+overrides are refreshed between slices of an active calculation.
+
+Inside a Monte Carlo job, populated boards with branching chain rules can
+reuse exact chain values across decisions and trials. Each partition includes
+the instruments affecting chain math, Cage Fight, Cancel availability and
+the current Rainbow value. Tier-scale or stop-margin changes invalidate the
+tables; composition and relevant crowd counts remain in each subproblem key.
+The cache is bounded to 8,192 values and 256 partitions per job, and uses no
+approximate matching. Sparse/simple chains retain local memoization because
+sharing them was slower. `solve(...).chainInfo()` exposes diagnostic counts;
+`chainCache: false` disables sharing for comparisons.
+
+`chain-cache-check.js` compares exact sample arrays and rankings with sharing
+disabled across 28 tool/rule combinations and changing parameters over 270
+slices, including capacity eviction. Add `--bench` to time both paths. One
+Node 22 run measured 93.2 to 40.3 ms with the tested instrument set and
+172.2 to 63.5 ms under Cage Fight (48 rounds). Those are specific synthetic
+positions, not a universal whole-overlay speedup. `solver-check.js` also
+checks frozen rule/contract definitions, unchanged caller state and callbacks.
+
+Use `overlay-check.js --solver-baseline sandbox/previous-solver` for the same
+sample/ranking checks and alternating median timings in real Electron. That
+directory must contain `solver.js`; this browser comparison uses the current
+rules engine and is suitable for solver-only changes.
+Against the preceding solver, an Electron run measured 150 to 107 ms for
+the empty-start case, 115 to 52 ms for the populated instrument case and
+172 to 55 ms for Cage Fight, using the same 48 rounds and exact complete
+sample/ranking comparisons (median of five alternating runs after warmup).
+These are calculation-only measurements on those test positions. The broader
+Node 22 full-check benchmark measured 2,776.6 to 2,420.3 ms (12.8% less time).
+
+The fast analyzer's Monte Carlo cache holds 256 complete summaries, bounded
+by an estimated 8 MiB and seven days. Keys preserve every normalized model
+field and array order, sort object keys, include the per-option target, and
+are namespaced by the analyzer's asset version. There is no approximate
+matching between different boards. Partial or reduced-budget results are
+rejected; zero/one-option checks retain their existing zero-playout result.
+IndexedDB I/O runs outside the advice path and falls back to bounded memory
+when unavailable. Manual Recheck always computes a new result.
+
+`solver-cache-check.js` covers real solver summaries, key determinism, budget
+checks, copy isolation, non-finite margins, entry/byte limits, expiry and
+unavailable/blocked storage. The Electron overlay check covers A → B → A,
+manual bypass, page reload, an actual app restart, automatic instrument/gift
+paths and preservation of disabled capture on restart. Cache reuse measured
+3 ms in memory and 5–9 ms after reload/restart, excluding screenshot reading.
+The app also flushes debounced settings on quit so an immediate restart
+keeps the last capture/settings change.
+
+Fast mode also prepares future positions while the player acts. After a final
+recommendation, the existing solver workers sample 48 immediate outcomes and
+prepare up to four distinct visible boards in frequency order. A completed
+prediction can seed one more action of lookahead; at most eight distinct
+candidate inputs are visited per confirmed position. The two-action
+lookahead is refreshed after every confirmed move. Cached intermediate results
+are followed to the next successor rather than stopping the new horizon;
+the player does not need to consume both old predictions before it advances.
+The predicted engine
+states pass through the actual screenshot-to-model conversion, then a fresh
+`buildState`, so unknown events, card restrictions and hidden information
+match the inputs a real observation would supply. Event dialogs, pending
+offers and delivery windows are skipped in this first implementation.
+
+Workers use 8 ms calculation slices and 24 ms idle gaps in background mode.
+Board triggers and new-day banners preserve the work during animations;
+recognition pauses it. A fully computed result is reused only through the
+existing exact normalized-model/budget key. An unfinished exact match keeps
+its samples and streams and switches to ordinary 60 ms slices without idle
+gaps; delayed messages under the old ID are accepted only by that same promoted
+request. A changed board or manual edit cancels the remaining speculative
+work. Manual Recheck and unavailable workers retain their original behavior.
+No provisional prediction appears as confirmed advice.
+
+`forecast-check.js` checks branch ordering/limits, deterministic sampling,
+source isolation, runtime trigger/recognition priority and the real worker
+protocol. It compares all 700 samples, counters and rankings against an
+uninterrupted solver after pausing and promoting a background task.
+`overlay-check.js --forecast` additionally drives controlled reader observations
+through the actual Electron analyzer and workers, checks all 1,600 promoted
+rounds, reuse of two consecutive prepared actions, different-board fallback and cancellation when
+capture is disabled. One Electron observation measured 1 ms to publish prepared
+advice versus 1,362 ms for a fresh calculation of that position. This excludes
+recognition/animation time and is not a live-game prediction hit-rate estimate.
+The two-action check later returned each prepared recommendation in 1 ms,
+with a fresh calculation of the first position taking 1,113 ms in that run.
+Timing records expose `forecastHit`, `forecastResumed` and cumulative forecast
+counters for measuring that hit rate during actual play.
+The rolling-horizon case prepares B/C from A, confirms only B, and requires
+the planner to pass through cached C and compute D before C is observed.
+It uses a deterministic Cage Fight chain with controlled rankings for this
+scheduling assertion; the preceding integration cases retain actual samples.
+`overlay-check.js --forecast-only` runs these forecast cases in a fresh profile
+without the rest of the desktop checks.
+
+Live records showed limited coverage with the first implementation: nine of
+63 timed advice events used a prepared result, while the median screen wait
+remained 1,524 ms. The next pass groups random door menus for the same next-day
+board into one six-direction patrol calculation. Up to eight such tables are
+kept in memory (each at most six rows of 1,600 samples under analyzer rules).
+All normalized model fields except the offered destinations must match exactly;
+the actual destinations must be present in the table. The real menu selects
+the corresponding complete sample rows, recomputes policy flags and paired
+margins, and retains the ordinary rollout target. An unfinished table can be
+promoted too: workers drop unoffered rows and retain every completed round.
+Late messages from before promotion are filtered with the same row indices.
+Challenge/ratway states use the ordinary path.
+
+Sampling also follows a forced End when no pending dialog, chain or potential
+post-Replace meal remains, and prepares the game's optional Consume card after
+Replace when a meal exists. No predicted board is displayed without an actual
+read. `forecast-menu-check.js` compares all samples, counters, margins and
+rankings for 92 menu/tool/reward combinations against independent full solves.
+The worker check additionally verifies exact partial-table promotion. The
+Electron check uses two different menus from one table, rejects a changed
+inmate and promotes a partially completed table with the full 1,600 rounds.
+Timings include `familyHits` and `familyResumed` counters.
+
+`node tools/forecast-replay.js path/to/record.jsonl --optimized` diagnoses local
+recorded transitions using the real analyzer conversions without starting the
+game or modifying the profile. On the recorded October 17 session, immediate
+exact coverage increased from 10/57 transitions to 22/57 with the same 48
+samples/four-outcome limit. This replay measures possible input matches, not
+live completion timing or whole-overlay latency; animation/recognition waits
+remain and a new live session is needed to measure the practical gain.

@@ -139,6 +139,7 @@
 
   // #endregion
   function snapshot() {
+    if (D.fast && window.TartarusAnalyzer && window.TartarusAnalyzer.desktopSnapshot) return window.TartarusAnalyzer.desktopSnapshot();
     const res = $('az-results');
     const body = $('az-res-body');
     const paras = body ? [...body.querySelectorAll('p')].map(text) : [];
@@ -186,9 +187,6 @@
       toolsConfirm: shown($('az-tools-confirm')) ? text($('az-tools-confirm-text')) : '',
       // A Warden's Treasure waits for the board behind it (View Prison Status).
       treasureWait: shown($('az-treasure-wait')),
-      // A screen the reader didn't recognize on a game client not in English
-      // ({ what, at, lang }): its screenshot can be sent from the analyzer.
-      langMiss: A && typeof A.langMiss === 'function' ? A.langMiss() : null,
       riot: riot && riot.value !== '' ? Number(riot.value) : null,
       dayof: text($('az-dayof')),
       step: text(step),
@@ -250,21 +248,26 @@
     };
   }, 1000);
   function soon() {
+    if (D.fast) {
+      if (!timer) { timer = 1; queueMicrotask(post); }
+      return;
+    }
     if (!timer) timer = setTimeout(post, 150);
   }
-  const watch = new MutationObserver(soon);
+  const watch = D.fast ? null : new MutationObserver(soon);
   for (const id of ['az-results', 'az-problems', 'az-step', 'az-dayof', 'az-scan-status', 'az-scan-report', 'az-tools-confirm', 'az-treasure-wait']) {
     const el = $(id);
-    if (el) watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true });
+    if (el && watch) watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true });
   }
+  if (D.fast) window.TartarusAnalyzer.onDesktopChange(soon);
   document.addEventListener('input', soon, true);
   document.addEventListener('change', soon, true);
-  setInterval(soon, 2000);
+  if (!D.fast) setInterval(soon, 2000);
   soon();
 
   const click = (id) => {
     const el = $(id);
-    if (!el || el.hidden || el.disabled) return false;
+    if (!el || (!D.fast && el.hidden) || el.disabled) return false;
     el.click();
     return true;
   };

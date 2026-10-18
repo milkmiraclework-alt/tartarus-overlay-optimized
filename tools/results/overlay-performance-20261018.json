@@ -1,0 +1,184 @@
+{
+  "date": "2026-10-18",
+  "build": "0.2.17-local.16",
+  "baseline": {
+    "repository": "https://github.com/blahdot3h/tartarus-simulator",
+    "commit": "f35a50a96976bdc3b577a4f7b5655cebda9ba1b7",
+    "release": "0.2.17",
+    "sameLiveRules": true
+  },
+  "machine": {
+    "cpu": "AMD Ryzen 5 3600 6-Core Processor",
+    "logicalCores": 12,
+    "platform": "win32",
+    "architecture": "x64",
+    "osRelease": "10.0.26200"
+  },
+  "sourceHashFormat": "SHA256 of UTF-8 source after CRLF-to-LF normalization.",
+  "sourceSha256": {
+    "js/engine.js": "46b7bed7e399353322508b1889e84fa1b5528aa136aa2fa897ff0ca9d0fcbcbb",
+    "js/solver.js": "48d6c509ccbe57b99efb4f31c6d79ac37134e22891f2af87e822c8d8bfb7d5f8",
+    "js/scan.js": "7614401e9aa8f4da8c7ef75780839e9d4bc7388417e8cf1e92d4b0f3abce1e99",
+    "js/scan-worker.js": "c6ff54c6bd50739770583029abc457fd94c3caffb76a1ff9e3e28eff1ad384dd",
+    "js/scan-search-worker.js": "4d3fe2ca2204f31d529d3b51efe472b1f9fc3b0708d2de3f0e19b85ca0c8f226",
+    "js/scan-tracker.js": "a6412a97afa523fea7d6de1d9d7cc5d1049b69c30daa4dccf125ef1be4204081"
+  },
+  "nodeSolver": {
+    "runtime": "v22.16.0",
+    "method": "Median of 5 timed runs after warmup; alternating implementation order; wall-clock time includes ordinary system load.",
+    "solveWorkload": {
+      "states": 12,
+      "rolloutsPerOption": 24,
+      "seed": 7919
+    },
+    "results": [
+      {
+        "task": "clone",
+        "optimizedMs": 444.6,
+        "baselineMs": 1129.2,
+        "speedup": 2.54
+      },
+      {
+        "task": "decide",
+        "optimizedMs": 29.5,
+        "baselineMs": 53.1,
+        "speedup": 1.8
+      },
+      {
+        "task": "solve",
+        "optimizedMs": 3344.4,
+        "baselineMs": 8735.2,
+        "speedup": 2.612
+      }
+    ]
+  },
+  "serialReader": {
+    "runtime": "v22.16.0",
+    "method": "Median of 3 timed scans after 1 warmup per implementation; alternating order; same exact reference data and frames; no tracking.",
+    "results": [
+      {
+        "fixture": "A",
+        "width": 2560,
+        "height": 1440,
+        "sha256": "9093bf5141768928334417b9668d8638a7c9a519343aca3a77924076c5796fa5",
+        "optimizedMs": 2218,
+        "baselineMs": 4548,
+        "speedup": 2.05
+      },
+      {
+        "fixture": "B",
+        "width": 2560,
+        "height": 1440,
+        "sha256": "473694c470904197af433732c059620aca27694d62f0691bf84cd07843fe9f98",
+        "optimizedMs": 2383,
+        "baselineMs": 5342,
+        "speedup": 2.242
+      }
+    ]
+  },
+  "parallelReader": {
+    "runtime": "v22.16.0",
+    "baseline": "The optimized serial reader, not the upstream reader.",
+    "method": "Median of 3 timed scans after 1 warmup per implementation; alternating order; persistent workers; 4 search helpers; no tracking.",
+    "results": [
+      {
+        "fixture": "A",
+        "optimizedSerialMs": 1962,
+        "optimizedParallelMs": 843,
+        "speedup": 2.327
+      },
+      {
+        "fixture": "B",
+        "optimizedSerialMs": 2256,
+        "optimizedParallelMs": 1106,
+        "speedup": 2.04
+      }
+    ]
+  },
+  "electronSolver": {
+    "runtime": {
+      "electron": "44.5.1",
+      "node": "24.21.0",
+      "chrome": "152.0.7977.130"
+    },
+    "method": "Median of 5 timed runs after warmup; alternating implementation order; full exact results, raw sample tables and unchanged input states compared.",
+    "rolloutsPerOption": 48,
+    "seed": 101,
+    "results": [
+      {
+        "task": "empty",
+        "optimizedMs": 92,
+        "baselineMs": 186,
+        "speedup": 2.022
+      },
+      {
+        "task": "instruments",
+        "optimizedMs": 36,
+        "baselineMs": 80,
+        "speedup": 2.222
+      },
+      {
+        "task": "Cage Fight",
+        "optimizedMs": 33,
+        "baselineMs": 118,
+        "speedup": 3.576
+      }
+    ]
+  },
+  "forecastObservations": {
+    "method": "Two earlier isolated Electron tests of the same local build; single observations, not medians. A prepared exact matching board versus a fresh calculation of the same test position.",
+    "preparedAdviceMs": [
+      1,
+      2
+    ],
+    "coldCalculationMs": [
+      1668,
+      1819
+    ],
+    "excludes": [
+      "animation wait",
+      "frame capture",
+      "recognition"
+    ],
+    "requiresExactPredictionHit": true
+  },
+  "correctness": {
+    "legalEaterMealPairs": 110592,
+    "seededGames": 264,
+    "decisionsCompared": 18563,
+    "monteCarloSamplesAndRankingsEqual": true,
+    "readerOutputsEqual": true,
+    "legacyCompatibility": "Comparison ignores only unused zero pass/points counters removed upstream.",
+    "electronChecks": [
+      "single hidden backend and native dependencies",
+      "native log wakeup",
+      "actual window capture",
+      "three entry/exit cycles with all owned workers and images released",
+      "full rollout budget",
+      "automatic cache reuse and changed-input invalidation",
+      "manual Recheck bypass",
+      "persistence after page reload and whole-app restart",
+      "instrument and treasure cache paths"
+    ],
+    "strategyLabSmokeTest": {
+      "games": 30,
+      "threads": 1,
+      "rewards": true,
+      "completed": true
+    }
+  },
+  "limitations": [
+    "These are separate stage benchmarks, not a live end-to-end game-session A/B test.",
+    "Do not multiply stage speedups.",
+    "No FPS or profit-per-hour improvement has been measured.",
+    "48/24-rollout fixtures are benchmark workloads; the application retains its ordinary full-budget policy.",
+    "Private fixture images and user profiles are not included in the repository."
+  ],
+  "commands": [
+    "node tools/solver-check.js --baseline BASELINE/js/solver.js --bench",
+    "node tools/scan-check.js --baseline BASELINE/js/scan.js --frames FRAMES --bench",
+    "node tools/scan-parallel-check.js --frames FRAMES --bench",
+    "node tools/overlay-check.js --solver-baseline BASELINE/js",
+    "node tools/overlay-check.js --forecast"
+  ]
+}
