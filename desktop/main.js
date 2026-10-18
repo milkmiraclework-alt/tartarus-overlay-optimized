@@ -182,23 +182,64 @@ const statOf = (p) => {
 // a log yet, a folder of an installed game, where it appears once the game
 // starts.
 const virtualStore = (p) => (/^[a-z]:\\program files/i.test(p) && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'VirtualStore', p.slice(3)) : null);
+// The game writes its log all the time while it runs: one that hasn't
+// changed for 2 minutes then isn't the one it writes (reports 357, 365: a
+// log left from another install, or Unreal's UE_game_2.log when the first
+// was held open).
+let logLookedAt = 0;
+const STALE_MS = 120000;
+function logStale() {
+  if (!game.running || !logPath || Date.now() - gameSince < STALE_MS) return false;
+  const st = statOf(logPath);
+  return !st || Date.now() - st.mtimeMs > STALE_MS;
+}
+// The newest UE_game*.log in these folders, and when it last changed.
+function newestLog(dirs) {
+  let best = null;
+  for (const dir of dirs) {
+    let names = [];
+    try {
+      names = fs.readdirSync(dir).filter((n) => /^UE_game(_\d+)?\.log$/i.test(n));
+    } catch (e) {
+      continue;
+    }
+    for (const n of names) {
+      const p = path.join(dir, n);
+      const st = statOf(p);
+      if (st && st.isFile() && (!best || st.mtimeMs > best.st.mtimeMs)) best = { p, st };
+    }
+  }
+  return best;
+}
+// The Logs folders beside the running game (and their VirtualStore copies).
+function besideGame() {
+  const program = game.running && game.hwnd && win32 ? win32.programOf(game.hwnd) : null;
+  if (!program || !/torchlight/i.test(program)) return [];
+  const own = path.resolve(path.dirname(program), '..', '..', 'TorchLight', 'Saved', 'Logs');
+  return [own, virtualStore(own)].filter(Boolean);
+}
 async function findLog() {
   if (LOG_OVERRIDE) {
     logFoundBy = 'given';
     return path.resolve(LOG_OVERRIDE);
   }
   if (settings.logPath && statOf(path.dirname(settings.logPath))) {
+    // A hand-picked log, unless the game stopped writing it and writes
+    // another, beside it or beside the running game.
+    const chosen = statOf(settings.logPath);
+    const idle = game.running && Date.now() - gameSince > STALE_MS && (!chosen || Date.now() - chosen.mtimeMs > STALE_MS);
+    const other = idle ? newestLog([path.dirname(settings.logPath), ...besideGame()]) : null;
+    if (other && path.resolve(other.p) !== path.resolve(settings.logPath) && Date.now() - other.st.mtimeMs < STALE_MS) {
+      logFoundBy = 'being written (the chosen one isn’t)';
+      return other.p;
+    }
     logFoundBy = 'chosen by the player';
     return settings.logPath;
   }
-  const program = game.running && game.hwnd && win32 ? win32.programOf(game.hwnd) : null;
-  if (program && /torchlight/i.test(program)) {
-    const own = path.resolve(path.dirname(program), '..', '..', 'TorchLight', 'Saved', 'Logs', 'UE_game.log');
-    const found = [own, virtualStore(own)].filter(Boolean).map((p) => ({ p, st: statOf(p) })).filter((x) => x.st && x.st.isFile()).sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
-    if (found.length) {
-      logFoundBy = 'beside the running game';
-      return found[0].p;
-    }
+  const own = newestLog(besideGame());
+  if (own) {
+    logFoundBy = 'beside the running game';
+    return own.p;
   }
   logFoundBy = 'in the game folders';
   const roots = new Map();
@@ -231,8 +272,8 @@ async function findLog() {
     logs.push(path.join(base, 'Game', 'UE_game', 'Torchlight', 'Saved', 'Logs', 'UE_game.log'));
   }
   for (const p of [...logs]) if (virtualStore(p)) logs.push(virtualStore(p));
-  const there = logs.map((p) => ({ p, st: statOf(p) })).filter((x) => x.st && x.st.isFile()).sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
-  if (there.length) return there[0].p;
+  const there = newestLog([...new Set(logs.map((p) => path.dirname(p)))]);
+  if (there) return there.p;
   // UE_game\TorchLight is there: the game is installed, and writes its log on start.
   return logs.find((p) => statOf(path.resolve(p, '..', '..', '..'))) || null;
 }
@@ -279,6 +320,7 @@ async function pickLog() {
 // What a browser can't see: which program a window is. The game window is
 // found by its title, every few seconds.
 let game = { running: false, title: '', hwnd: 0 };
+let gameSince = 0; // when the game was last found running
 // The game counts as closed only after its window has been missing for
 // three looks in a row: a failed look, or a moment between two windows
 // (loading screens), doesn't hide the overlay or end the share.
@@ -304,7 +346,18 @@ async function lookForGame() {
     return;
   }
   const was = game.running;
+  const wasHwnd = game.hwnd;
   game = { running: !!source, title: source ? source.name.trim() : '', hwnd: source ? Number(source.id.split(':')[1]) || 0 : 0 };
+  if (was && game.running && wasHwnd && game.hwnd !== wasHwnd) {
+    note('game window changed');
+    pushGame();
+  }
+  if (!was && game.running) gameSince = Date.now();
+  // A log the game stopped writing gives way to one it's writing.
+  if (game.running && Date.now() - logLookedAt > 30000) {
+    logLookedAt = Date.now();
+    if (logStale()) refreshLog();
+  }
   if (game.running !== was) {
     note(game.running ? `game running: "${game.title}"` : 'game closed');
     recordEvent({ type: game.running ? 'game' : 'game-closed' });
@@ -349,12 +402,22 @@ const win32 = (() => {
           const pid = [0]; windowPid(hwnd, pid);
           return pid[0] === process.pid && !TEST ? null : { title, hwnd: Number(hwnd) };
         };
-        const current = known && fits(known);
-        if (current) return current;
-        for (let hwnd = nextWindow(0, 0, null, null), guard = 0; hwnd && guard < 4096; hwnd = nextWindow(0, hwnd, null, null), guard++) {
-          const found = fits(hwnd); if (found) return found;
+        // The largest that fits: a launcher can share the game's title
+        // (reports 371, 372, 379), and the game's own window is the big one.
+        // A minimized one keeps its place.
+        if (known && iconic(known)) {
+          const again = fits(known);
+          if (again) return again;
         }
-        return null;
+        let best = null;
+        for (let h = Number(nextWindow(0, 0, null, null)), guard = 0; h && guard < 4096; h = Number(nextWindow(0, h, null, null)), guard++) {
+          const found = fits(h);
+          if (!found) continue;
+          const r = {};
+          const area = rect(h, r) ? (r.right - r.left) * (r.bottom - r.top) : 0;
+          if (!best || area > best.area || (area === best.area && h === known)) best = { title: found.title, hwnd: h, area };
+        }
+        return best ? { title: best.title, hwnd: best.hwnd } : null;
       },
       // Where the program behind a window is: only its file's name
       // (PROCESS_QUERY_LIMITED_INFORMATION reads nothing else of it).
@@ -807,7 +870,7 @@ const fromPage = (e, name) => {
 };
 
 function gameInfo() {
-  return { running: game.running, title: game.title, log: logPath ? { path: logPath, name: path.basename(logPath), there: !!statOf(logPath) } : null };
+  return { running: game.running, title: game.title, window: game.hwnd || 0, log: logPath ? { path: logPath, name: path.basename(logPath), there: !!statOf(logPath) } : null };
 }
 function pushGame() {
   const g = gameInfo();
@@ -1104,7 +1167,10 @@ function command(cmd) {
   switch (cmd) {
     case 'board': return toggle('analyzer');
     case 'follow': return show('follow');
-    case 'capture': return send('follow', 'command', 'capture');
+    case 'capture':
+      // Auto Screenshot Mode is off: its page, to turn it on (report 380).
+      if (agreed === false) return show('follow');
+      return send('follow', 'command', 'capture');
     case 'fix':
       show('analyzer');
       return send('analyzer', 'command', 'fix');
@@ -1155,8 +1221,16 @@ function allowCapture() {
     }
     desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
       .then((sources) => {
-        const s = sources.find((x) => GAME_TITLE.test(x.name));
-        note(s ? `window share: "${s.name.trim()}"` : 'window share refused: no game window');
+        // The game's window by its handle, then by its title (a launcher
+        // can share the title, reports 371 and 372).
+        let s = game.hwnd ? sources.find((x) => x.id.startsWith(`window:${game.hwnd}:`)) : sources.find((x) => GAME_TITLE.test(x.name));
+        if (s) note(`window share: "${s.name.trim()}"`);
+        else if (game.running && game.hwnd) {
+          // Windows has the game's window, but the capture's list left it out
+          // (reports 175 and 180): it's asked for by its handle.
+          s = { id: `window:${game.hwnd}:0`, name: game.title };
+          note(`window share: "${game.title}" by its handle`);
+        } else note('window share refused: no game window');
         callback(s ? { video: s } : {});
       })
       .catch((e) => {

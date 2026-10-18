@@ -82,7 +82,7 @@ async function scanBoard(img, ref, force = false, lang = 'en') {
   // Reuse the idle search workers for independent panels. Only doors/days
   // need grayscale; the tools and vault readers use the original RGBA.
   const reused = trackingEnabled && !force ? tracker.panels(img, loc) : {};
-  if (lang !== 'en') delete reused.doors;
+  if (lang !== 'en' || reused.doors?.hidden?.length) delete reused.doors;
   const board = lang !== 'en' ? S.readBoardCells(img, sharp, loc, ref) : null;
   const jobs = [0, 1, 2].filter((panel) => !Object.prototype.hasOwnProperty.call(reused, panel === 0 ? 'doors' : panel === 1 ? 'tools' : 'chromatic'));
   const readPanel = (panel) => panel === 0 ? { doors: S.readDoors(img, sharp, loc, ref, lang !== 'en', board?.cells), days: S.readDays(img, sharp, loc, ref) }
@@ -91,6 +91,10 @@ async function scanBoard(img, ref, force = false, lang = 'en') {
     .then((results) => Object.assign({}, reused, ...results), (error) => { stopSearchPool(error); return null; });
   const actualBoard = board || S.readBoardCells(img, sharp, loc, ref);
   const panels = await panelsTask;
+  // Hidden English card numbers now depend on which board cells are lit.
+  // Keep the common panel work parallel; retry only the occluded-door case
+  // against this frame's freshly read cells, never cached board lighting.
+  if (lang === 'en' && panels?.doors?.hidden?.length) panels.doors = S.readDoors(img, sharp, loc, ref, false, actualBoard.cells);
   const result = S.scanLocated(img, ref, gray, sharp, loc, started, { board: actualBoard, panels }, { lang });
   if (trackingEnabled && !force && tracker.info().mode === 'tracked' && (!result.ok || !result.warden || result.cells.some((cell) => cell.conf < 0.2))) {
     tracker.reset();

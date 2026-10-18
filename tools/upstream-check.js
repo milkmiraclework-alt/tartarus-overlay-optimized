@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* Imported live rules and read-only upstream update detection. */
 'use strict';
-const assert = require('node:assert/strict');
+const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const T = require('../js/engine.js'), S = require('../js/solver.js');
 const updates = require('../desktop/lib/upstream-updates.js');
 const version = require('../desktop/lib/upstream-version.json');
@@ -41,6 +41,49 @@ assert.ok(T.resolveEvent(portion, true).ok); assert.equal(portion.cells.filter((
 const usurp = board([], 15); usurp.phase = 'event'; usurp.event = { kind: 'usurp1', cell: 1 }; usurp.eventPool = ['usurp1'];
 assert.ok(T.resolveEvent(usurp, true).ok); assert.ok(usurp.cells.some((c) => c.event === 'usurp2'), 'Next Usurpation was lost on an all-open board');
 console.log('PASS: second meals, Muzzle, vault cap, Opulence, Hunt, Instigate on open cells, Extra Portion and successive Usurpations.');
+// 0.2.18 restrictions must reach the fast solver as well as the full UI.
+const marked = board(['trap'], 3);
+marked.cells[1].inmate.beast = 'lion';
+marked.cells[2].inmate.beast = marked.cells[3].inmate.beast = 'rat';
+marked.cells[2].inmate.marked = true;
+assert.deepEqual(T.huntTargets(marked), [3], 'An already marked inmate was offered for Hunt');
+marked.used.huntOnly = [2];
+assert.deepEqual(T.huntTargets(marked), [2], 'The game-framed pick was ignored');
+const office = board(); office.phase = 'office'; office.position = 0; office.used.officeOnly = 'bestow';
+assert.deepEqual(S.candidates(office).map(o => o.action.choice), ['bestow']);
+assert.equal(S.decide(office).choice, 'bestow');
+assert.equal(T.officeAct(office, 'instigate').ok, false);
+const taskWindow = { Tartarus: T, TartarusSolver: S };
+const init = '  buildBoard();\n  bind();\n  render();';
+const source = fs.readFileSync(require.resolve('../js/analyze.js'), 'utf8').replace(/\r\n/g, '\n');
+assert.ok(source.includes(init));
+vm.runInNewContext(source.replace(init, '  window.checkImported = { blankModel, scanToModel, buildState, forecastModels };'), {
+  window: taskWindow, document: { currentScript: null }, navigator: { hardwareConcurrency: 4 }, localStorage: { getItem: () => null }
+});
+const A = taskWindow.checkImported, base = A.blankModel(); base.tools = ['trap'];
+const picture = {
+  cells: Array.from({ length: 16 }, (_, n) => n === 0 ? { n, kind: 'office', conf: 1 } : n <= 3
+    ? { n, kind: 'inmate', beast: n === 1 ? 'lion' : 'rat', tier: 0, conf: 1, prey: n === 2 } : { n, kind: 'locked', conf: 1 }),
+  days: { days: 19 }, warden: { cell: 1, conf: 1 }, tools: { tools: [] }, chromatic: { count: 0 }, decision: { title: true, ratway: true, framed: [3] }
+};
+const huntRead = A.scanToModel(picture, base).model;
+assert.equal(huntRead.step, 'manage'); assert.equal(huntRead.cells[2].marked, true);
+assert.equal(JSON.stringify(huntRead.huntOnly), '[3]');
+assert.equal(JSON.stringify(T.huntTargets(A.buildState(huntRead).st)), '[3]');
+const only = A.scanToModel({ ...picture, warden: { cell: 0, conf: 1 }, decision: { office: true, bestow: true, instigate: false } }, base).model;
+assert.equal(only.officeOnly, 'bestow'); assert.equal(A.buildState(only).st.used.officeOnly, 'bestow');
+const hiddenDoor = { ...picture, decision: null, doors: { cells: [7], hidden: [7], conf: 0.9 } };
+assert.equal(A.scanToModel(hiddenDoor, base).checks.has(7), true, 'An unresolved covered door was not marked Check');
+assert.equal(A.scanToModel({ ...hiddenDoor, doors: { ...hiddenDoor.doors, lit: true } }, base).checks.has(7), false, 'A door settled by lit cells stayed marked Check');
+const badge = { ...picture, badge: { id: 'cagefight' } };
+assert.equal(A.scanToModel(badge, base).model.startEvent, 'cagefight');
+assert.equal(A.scanToModel(badge, { ...base, startEvent: 'tyranny' }).model.startEvent, 'tyranny', 'A badge overrode a known start card');
+assert.equal(A.forecastModels(office, base)[0].officeOnly, 'bestow', 'Forecast conversion dropped the office restriction');
+assert.equal(JSON.stringify(A.forecastModels(marked, base)[0].huntOnly), '[2]', 'Forecast conversion dropped Hunt framing');
+const F = require('../js/solver-forecast.js');
+const unmarked = S.clone(marked); unmarked.cells[2].inmate.marked = false;
+assert.notEqual(F.visibleKey(marked), F.visibleKey(unmarked));
+console.log('PASS: Prey marks, framed Hunt targets, one-card office choices, covered doors, protected start cards and reader/solver/forecast conversions.');
 (async () => {
   let calls = 0;
   const fetch = (data, ok = true) => async (url, options) => {

@@ -138,6 +138,12 @@
       noSwap: false,
       noDevour: false,
       noHunt: false,
+      // The cells the game framed on the Hunt's pick (only those can be
+      // marked), while it's open.
+      huntOnly: null,
+      // The office shows one card only (read from a screenshot): 'bestow' or
+      // 'instigate'.
+      officeOnly: null,
       eventKind: 'chain',
       // rerolls: a pet's re-rolls left on an instrument offer. picks: the
       // Warden's Treasure picks waiting, this one included (3 a Treasure
@@ -210,6 +216,7 @@
       else if (c.kind === 'inmate') {
         cell.sealed = false;
         cell.inmate = make(c.beast, c.tier);
+        if (c.marked) cell.inmate.marked = true;
         cell.ivory = !!c.ivory;
         // An event can wait in an open cell ("Can trigger Prison Incident").
         setEvent();
@@ -268,7 +275,7 @@
     st.phase = 'manage';
 
     const usedToday = () => {
-      st.used = { swap: m.swapUsed ? 1 : 0, devour: m.devourUsed ? 1 : 0, devourAfterSwap: !!m.consumeOffered, noSwap: !!m.noSwap, noDevour: !!m.noDevour, noHunt: !!m.noHunt };
+      st.used = { swap: m.swapUsed ? 1 : 0, devour: m.devourUsed ? 1 : 0, devourAfterSwap: !!m.consumeOffered, noSwap: !!m.noSwap, noDevour: !!m.noDevour, noHunt: !!m.noHunt, huntOnly: Array.isArray(m.huntOnly) ? m.huntOnly.slice() : null, officeOnly: m.officeOnly || null };
     };
     switch (m.step) {
       case 'patrol': {
@@ -388,7 +395,7 @@
       if (!c.inmate) return { kind: 'empty' };
       const link = T.linkOf(st, c.inmate.id);
       const preyCell = link && link.lion === c.inmate.id ? T.cellOf(st, link.prey) : null;
-      return { kind: 'inmate', beast: c.inmate.beast, tier: Math.min(TOP_TIER, c.inmate.tier), ivory: !!c.ivory, prey: preyCell ? { cell: preyCell.n, rounds: link.rounds } : null, event };
+      return { kind: 'inmate', beast: c.inmate.beast, tier: Math.min(TOP_TIER, c.inmate.tier), ivory: !!c.ivory, prey: preyCell ? { cell: preyCell.n, rounds: link.rounds } : null, marked: !!c.inmate.marked, event };
     });
     if (st.pending.length) {
       m.step = 'choice';
@@ -408,6 +415,8 @@
     m.noSwap = !!st.used.noSwap;
     m.noDevour = !!st.used.noDevour;
     m.noHunt = !!st.used.noHunt;
+    m.huntOnly = Array.isArray(st.used.huntOnly) ? st.used.huntOnly.slice() : null;
+    m.officeOnly = st.phase === 'office' && st.used.officeOnly ? st.used.officeOnly : null;
     m.ended = st.phase === 'ended';
     return m;
   }
@@ -478,10 +487,9 @@
   // ---------- Analysis ----------
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
-  // Keep valid perf16 results across UI/lifecycle fixes. Bump this revision
-  // only when solver/rule semantics or the rollout policy actually change.
-  const SOLVER_CACHE_REVISION = '?v=20261018perf16';
-  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=f35a50a:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
+  // Bump for rule/strategy imports, retain across compatible UI-only fixes.
+  const SOLVER_CACHE_REVISION = '?v=20261018perf18';
+  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=bc52859:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
     stats: { generated: 0, completed: 0, hits: 0, resumed: 0, cancelled: 0, reused: 0, familyHits: 0, familyResumed: 0 } };
@@ -547,14 +555,20 @@
     const moves = S.candidates(st), chaining = !!st.chaining;
     const cells = st.cells.map((c) => ({ n: c.n, kind: c.n === 0 ? 'office' : c.sealed ? 'locked' : c.inmate ? 'inmate' : 'empty',
       beast: c.inmate?.beast, tier: c.inmate?.tier, conf: 1, event: c.seen !== false && !!c.event, nest: !!c.nest,
-      jaws: !!c.inmate && T.devourOptions(st, c.n).length > 0 }));
+      jaws: !!c.inmate && T.devourOptions(st, c.n).length > 0,
+      prey: !!c.inmate && (!!c.inmate.marked || st.prey.some((link) => link.prey === c.inmate.id)) }));
     const reading = { cells, warden: { cell: st.position, conf: 1 }, days: { days: st.maxDays - st.day },
       doors: st.phase === 'patrol' && !st.ratway ? { cells: st.destinations, conf: 1 } : null,
       tools: { tools: st.tools.map((id) => ({ id, sim: id, name: T.toolName(id), conf: 1 })) }, chromatic: { count: st.vault.length },
       chain: chaining ? { targets: T.chainOptions(st).map((o) => o.cell) } : null,
       decision: chaining || st.phase === 'patrol' && !st.ratway ? null : { title: true, end: true,
         office: st.phase === 'office', ratway: !!st.ratway,
+        instigate: st.phase === 'office' && (!st.used.officeOnly || st.used.officeOnly === 'instigate'),
+        bestow: st.phase === 'office' && (!st.used.officeOnly || st.used.officeOnly === 'bestow'),
         consume: moves.some((o) => o.action.type === 'devour'), replace: moves.some((o) => o.action.type === 'swap'), hunt: moves.some((o) => o.action.type === 'hunt') } };
+    if (st.phase === 'manage' && !st.used.hunt && Array.isArray(st.used.huntOnly)) {
+      reading.decision = { title: true, ratway: true, framed: st.used.huntOnly.slice() };
+    }
     const models = [];
     // The live game can offer Consume after Replace. The engine keeps it
     // opt-in; prepare that exact card state as well when a meal is present.
@@ -1918,7 +1932,7 @@
   const GAME_LANGS = { en: 'English', ru: 'Russian', zh: 'Chinese' };
   const LANG_KEY = 'tartarus-sim:game-lang:v1';
   const LANG_NOTES = {
-    ru: 'Игра на русском языке. Анализатор обучен на английском клиенте: клетки, звери и редкость на поле читаются на любом языке; двери дня читаются по номерам клеток, но на русском клиенте это ещё не проверено, поэтому сверьте их (в разделе «Which door to patrol»). Кнопки замены и поглощения, ваши инструменты, счётчик хроматических заключённых, предложения инструментов, цели и карты начала забега читаются по английскому тексту. Укажите их вручную, а если экран не распознан, отправьте его кнопкой «Send this screenshot», чтобы анализатор научился читать русский клиент.',
+    ru: 'Игра на русском языке. Анализатор обучен на английском клиенте: клетки, звери и редкость на поле, а также двери дня (по номерам клеток), читаются на любом языке. Кнопки замены и поглощения, ваши инструменты, счётчик хроматических заключённых, предложения инструментов, цели и карты начала забега читаются по английскому тексту. Укажите их вручную, а если экран не распознан, отправьте его кнопкой «Send this screenshot», чтобы анализатор научился читать русский клиент.',
     zh: '游戏为中文客户端。分析器是基于英文客户端训练的：棋盘上的格子、野兽和稀有度，以及当天的门（按格子编号），在任何语言下都能识别；但替换和吞噬按钮、你的刑具、彩色囚犯数量、刑具选择、本局目标和开局卡牌是按英文文字识别的。请手动设置这些内容；若某个画面未被识别，请点击“Send this screenshot”发送截图，帮助分析器学会识别中文客户端。',
   };
   let gameLang = 'en';
@@ -1929,9 +1943,9 @@
   }
   const langName = (code) => GAME_LANGS[code] || 'another language';
   // Today's doors are read by their cell numbers in any language (since
-  // 20261017s), checked on real Chinese and Korean boards; in others a letter
-  // can pass for a digit, so the player checks them.
-  const DOORS_READ = ['zh', 'ko'];
+  // 20261017s), checked on real Chinese, Korean and Russian boards (c2); in
+  // others a letter can pass for a digit, so the player checks them.
+  const DOORS_READ = ['zh', 'ko', 'ru'];
   function langNote() {
     if (gameLang === 'en') return '';
     const doors = DOORS_READ.includes(gameLang)
@@ -2936,7 +2950,8 @@
         }
         if (c.conf < 0.6) checks.add(n);
       } else if (c.kind === 'inmate') {
-        m.cells[n] = { kind: 'inmate', beast: c.beast, tier: clamp(c.tier, 0, TOP_TIER), ivory: keptTusk(base, n, c.beast, clamp(c.tier, 0, TOP_TIER)), prey: null, event: c.event ? 'unknown' : null };
+        // The gold crosshair under a portrait: someone's Prey mark (report 352).
+        m.cells[n] = { kind: 'inmate', beast: c.beast, tier: clamp(c.tier, 0, TOP_TIER), ivory: keptTusk(base, n, c.beast, clamp(c.tier, 0, TOP_TIER)), prey: null, marked: !!c.prey, event: c.event ? 'unknown' : null };
         if (c.conf < 0.6 || c.ghost) checks.add(n);
       } else {
         m.cells[n] = { kind: 'empty' };
@@ -2955,8 +2970,14 @@
     if (r.doors && r.doors.cells.length) {
       m.step = 'patrol';
       m.dest = r.doors.cells.filter((n) => n !== m.warden);
-      // The mouse pointer over a card's number hides its digit (report 318).
-      if (r.doors.hidden && r.doors.hidden.length) notes.push(`The mouse pointer covers the number on the card read as ${r.doors.hidden.map((n) => `cell ${L(n)}`).join(' and ')}: check that door.`);
+      // The mouse pointer over a card's number hides its digit (report 318),
+      // unless the lit cells settled it (report 360). Unsettled, that door is
+      // marked Check: a guess, not a reading.
+      if (r.doors.hidden && r.doors.hidden.length && r.doors.lit) notes.push(`The mouse pointer covers the number on one card: the lit cells show it is cell ${L(r.doors.hidden[0])}.`);
+      else if (r.doors.hidden && r.doors.hidden.length) {
+        notes.push(`The mouse pointer covers the number on the card read as ${r.doors.hidden.map((n) => `cell ${L(n)}`).join(' and ')}: check that door.`);
+        r.doors.hidden.forEach((n) => checks.add(n));
+      }
       else if (r.doors.conf < 0.6) notes.push('Today’s doors were hard to read: check them.');
     } else if (!r.decision && !r.statusView && base.step === 'patrol' && (base.dest || []).length && m.day === base.day && m.warden === base.warden) {
       // No door cards and no buttons, on the same day with the warden where
@@ -2982,6 +3003,8 @@
     m.noSwap = false;
     m.noDevour = false;
     m.noHunt = false;
+    m.huntOnly = null;
+    m.officeOnly = null;
     // Without the cards (a picture taken as they come up), a board of the
     // same day with the warden in the same cell keeps what the board
     // before knew. And if the warden's inmate has changed since, today's
@@ -3003,25 +3026,34 @@
         m.cells[m.warden].ivory = false; // a Tusk mark is used by the Replace
       }
     }
-    // “Select an Objective” right after this visit's cards, with the warden
-    // on a Lion and the Blood-Stained Trap held: the Hunt's pick of its prey
-    // (report 352: only the Lion's meals framed), not the Sewer Ratway's,
-    // which follows its event card and frames every cell.
+    // “Select an Objective” with the warden on a Lion and the Blood-Stained
+    // Trap held: the Hunt's pick of its prey when only some cells are framed
+    // (report 352: the Lion's 3 meals), not the Sewer Ratway's, which frames
+    // all 15. Without the frames read, it's the Hunt's when it comes right
+    // after this visit's cards (the Ratway's follows its event card).
     const here = m.cells[m.warden];
     const trap = (m.tools || []).includes('trap') || ((r.tools && r.tools.tools) || []).some((t) => t.sim === 'trap');
-    const huntPick = !!(r.decision && r.decision.ratway) && trap && base.step === 'manage' && m.day === base.day && m.warden === base.warden && !!here && here.kind === 'inmate' && here.beast === 'lion';
+    const framed = r.decision && r.decision.ratway && Array.isArray(r.decision.framed) && r.decision.framed.length ? r.decision.framed : null;
+    const lionHere = !!here && here.kind === 'inmate' && here.beast === 'lion';
+    const huntPick = !!(r.decision && r.decision.ratway) && trap && lionHere && (framed ? framed.length < 14 : base.step === 'manage' && m.day === base.day && m.warden === base.warden);
     if (r.decision && r.decision.office) {
-      // The office's Instigate and Bestow cards.
+      // The office's Instigate and Bestow cards. The game can show just one
+      // (report 383: Bestow alone), when the reader tells them apart.
       m.step = 'office';
       m.dest = [];
+      const ins = r.decision.instigate;
+      const bes = r.decision.bestow;
+      if (ins === false && bes) m.officeOnly = 'bestow';
+      else if (bes === false && ins) m.officeOnly = 'instigate';
     } else if (huntPick) {
-      // Only the Hunt is open now.
+      // Only the Hunt is open now, on the framed cells.
       m.step = 'manage';
       m.dest = [];
       m.swapUsed = false;
       m.devourUsed = false;
       m.noSwap = true;
       m.noDevour = true;
+      if (framed) m.huntOnly = framed.slice();
     } else if (r.decision && r.decision.ratway) {
       // The Sewer Ratway's cell pick: a move to any cell but the office.
       m.step = 'ratway';
@@ -3059,7 +3091,11 @@
     const doorsDue = T.DEFAULT_PARAMS.destinations - m.tools.filter((id) => takers.includes(id)).length;
     if (m.step === 'patrol' && !officeNear && m.dest.length && m.dest.length < doorsDue) m.shortDays = [...new Set([...(m.shortDays || []), m.day])];
     if ((m.shortDays || []).length >= 2 && !m.tools.some((id) => takers.includes(id))) {
-      const hint = `${T.plural(m.shortDays.length, 'morning')} of this run offered a door short, as the Forged Key, Barbed Whip or Burning Stake do. If you hold one, set it under Torture Instrument${m.toolsConfirmed ? '' : ', then press These are right'}.`;
+      // Held as the Lost Ring of Keys, which takes no door: the Forged Key's
+      // icon, two keys on a ring (report 378), passes for it on the panel.
+      const hint = m.tools.includes('keys')
+        ? `${T.plural(m.shortDays.length, 'morning')} of this run offered a door short, which the Lost Ring of Keys doesn't do. The Forged Key does, and its icon looks like the Ring's: if you hold the Forged Key, set it under Torture Instrument in place of the Lost Ring of Keys${m.toolsConfirmed ? '' : ', then press These are right'}.`
+        : `${T.plural(m.shortDays.length, 'morning')} of this run offered a door short, as the Forged Key, Barbed Whip or Burning Stake do. If you hold one, set it under Torture Instrument${m.toolsConfirmed ? '' : ', then press These are right'}.`;
       if (m.toolsConfirmed || m.toolsToConfirm) notes.push(hint);
       else m.toolsToConfirm = hint;
     }
@@ -3068,9 +3104,11 @@
     // Their beasts don't show in the slots, and nothing depends on them.
     m.vault = new Array(chromatic).fill('wolf');
     const highest = Math.max(0, ...m.cells.filter((c) => c.kind === 'inmate').map((c) => c.tier));
-    // The start card's badge under the instrument panel (Opulence so far):
-    // the run has that card, in case its popup was missed.
-    if (r.badge && r.badge.id && T.START_EVENTS && T.START_EVENTS[r.badge.id] && m.startEvent !== r.badge.id) {
+    // The start card's badge under the instrument panel: the run has that
+    // card, in case its popup was missed. Only while no card is set: one the
+    // player or a popup set stands (report 358: a Cage Fight badge read as
+    // Tyranny undid the player's choice on every picture).
+    if (r.badge && r.badge.id && T.START_EVENTS && T.START_EVENTS[r.badge.id] && (!m.startEvent || m.startEvent === 'none')) {
       m.startEvent = r.badge.id;
       notes.push(`Start of run: ${T.START_EVENTS[r.badge.id].name}, from its badge under the instruments.`);
     }
@@ -3153,7 +3191,7 @@
       const nests = m.cells.filter((c) => c.kind === 'nest').length;
       list.push(`<li><b>Board</b> ${T.plural(inmates, 'inmate')}, ${T.plural(locked, 'locked cell')}${events ? `, ${T.plural(events, 'event')}` : ''}${nests ? `, ${T.plural(nests, 'rat nest')}` : ''}</li>`);
       list.push(`<li><b>Warden</b> ${r.warden ? (r.warden.cell === T.OFFICE ? 'in the office' : `cell ${L(r.warden.cell)}`) : 'not found'}</li>`);
-      list.push(`<li><b>Today</b> ${rd.chain ? `${m.step === 'chain' ? 'a consume chain picks its next meal, or Cancel stops it' : 'the day’s consume picks its meal'}: cell ${rd.chain.map(L).join(' or ')}` : m.step === 'patrol' ? `choose a door: ${m.dest.map(L).join(', ')}` : r.decision && r.decision.ratway ? (rd.huntPick ? 'the Hunt: pick the Lion’s prey' : 'the Sewer Ratway: pick any cell but the office') : r.decision && r.decision.office ? 'the office: Instigate or Bestow' : r.decision ? `your decision: ${[r.decision.replace && 'Replace', r.decision.consume && 'Consume', 'End'].filter(Boolean).join(', ')}` : 'no door cards, so after the patrol'}</li>`);
+      list.push(`<li><b>Today</b> ${rd.chain ? `${m.step === 'chain' ? 'a consume chain picks its next meal, or Cancel stops it' : 'the day’s consume picks its meal'}: cell ${rd.chain.map(L).join(' or ')}` : m.step === 'patrol' ? `choose a door: ${m.dest.map(L).join(', ')}` : r.decision && r.decision.ratway ? (rd.huntPick ? `the Hunt: pick the Lion’s prey${(r.decision.framed || []).length ? `, cell ${r.decision.framed.map(L).join(', ')}` : ''}` : 'the Sewer Ratway: pick any cell but the office') : r.decision && r.decision.office ? (rd.model.officeOnly ? `the office: ${rd.model.officeOnly === 'bestow' ? 'Bestow' : 'Instigate'} only` : 'the office: Instigate or Bestow') : r.decision ? `your decision: ${[r.decision.replace && 'Replace', r.decision.consume && 'Consume', 'End'].filter(Boolean).join(', ')}` : 'no door cards, so after the patrol'}</li>`);
       list.push(`<li><b>Riot</b> ${r.days ? `${T.plural(r.days.days, 'day')} away, so day ${m.day} of ${m.maxDays}` : 'not read'}</li>`);
       list.push(`<li><b>Instruments</b> ${rd.tools.length ? rd.tools.map((t) => esc(t.name || t.id) + (t.sim ? '' : ' (not simulated)')).join(', ') : 'none'}</li>`);
       list.push(`<li><b>Chromatic</b> ${T.plural(rd.chromatic, 'prisoner')}${r.chromatic ? '' : ' (panel not found)'}</li>`);
@@ -3201,6 +3239,10 @@
     const r = reader.result;
     const rd = reader.reading;
     const lines = [`Reader ${SCRIPT_QUERY.replace(/^\?v=/, '') || 'local'}, ${reader.follow ? 'an Auto Screenshot Mode picture' : 'a screenshot'} of ${reader.image.width}×${reader.image.height}, read in ${(reader.ms / 1000).toFixed(1)} s.`];
+    // The Warden's Treasure isn't read from a picture: during it, the picture
+    // is a board, from before it or seen behind it (reports 349, 363: taken
+    // for a board read wrong).
+    if (model.step === 'choice' && model.choice.kind === 'gift') lines.push(`The Warden’s Treasure is open (from the game’s log); this picture is ${model.treasureSeen ? 'the board seen behind it' : 'the last board before it'}. Its gifts aren’t read from a picture.`);
     if (!r.ok || !rd) {
       lines.push(`Not read: ${r.reason || 'no result'}`);
       return lines.join('\n');
@@ -3213,11 +3255,11 @@
         ? `doors ${r.doors.cells.map(L).join(', ')}${sure(r.doors)}`
         : r.decision
           ? r.decision.ratway
-            ? (rd.huntPick ? 'the Hunt’s pick of its prey' : 'the Sewer Ratway’s pick of a cell')
-            : `buttons: ${r.decision.office ? 'Instigate, Bestow' : [r.decision.replace && 'Replace', r.decision.consume && 'Consume', 'End'].filter(Boolean).join(', ')}`
+            ? (rd.huntPick ? `the Hunt’s pick of its prey${(r.decision.framed || []).length ? `: ${r.decision.framed.map(L).join(', ')}` : ''}` : 'the Sewer Ratway’s pick of a cell')
+            : `buttons: ${r.decision.office ? [r.decision.instigate !== false && 'Instigate', r.decision.bestow !== false && 'Bestow'].filter(Boolean).join(', ') : [r.decision.replace && 'Replace', r.decision.consume && 'Consume', 'End'].filter(Boolean).join(', ')}`
           : 'no doors or buttons';
     lines.push(`Day ${m.day} of ${m.maxDays}${r.days ? `, ${r.days.days} days to the riot${sure(r.days)}` : ', riot not read'}; warden ${r.warden ? L(r.warden.cell) + sure(r.warden) : 'not found'}; ${today}.`);
-    lines.push(`Cells (tiers 0 Normal to 4 Supreme, ? unsure): ${r.cells.filter((c) => c.n !== T.OFFICE).map((c) => `${L(c.n)} ${cellText(c)}${c.jaws ? ' jaws' : ''}${c.ghost ? ' faded' : ''}${sure(c)}`).join(', ')}.`);
+    lines.push(`Cells (tiers 0 Normal to 4 Supreme, ? unsure): ${r.cells.filter((c) => c.n !== T.OFFICE).map((c) => `${L(c.n)} ${cellText(c)}${c.jaws ? ' jaws' : ''}${c.prey ? ' prey' : ''}${c.ghost ? ' faded' : ''}${sure(c)}`).join(', ')}.`);
     const icons = r.tools && r.tools.tools ? r.tools.tools : [];
     lines.push(`Instruments read: ${icons.length ? icons.map((t) => `${t.name || t.id} ${Math.round(100 * t.conf)}%`).join(', ') : 'none'}; used: ${rd.tools.length ? rd.tools.map((t) => `${t.name || t.id}${t.kept ? ' (kept)' : ''}`).join(', ') : 'none'}.`);
     lines.push(`Chromatic ${rd.chromatic}${r.chromatic ? '' : ' (panel not found)'}; objective ${(T.OBJECTIVES[model.objective] || { name: model.objective || 'none' }).name}${T.START_EVENTS && T.START_EVENTS[model.startEvent] ? `; start card ${T.START_EVENTS[model.startEvent].name}` : ''}.`);

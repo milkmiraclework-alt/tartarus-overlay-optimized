@@ -29,7 +29,7 @@ assert.notEqual(F.visibleKey(st), F.visibleKey({ ...st, position: 3 }));
 console.log('PASS: deterministic and random next-state branches, frequency ordering, limits, source isolation and invalid moves.');
 
 async function checkRuntime() {
-  const events = {}, invalidations = [], transitions = [];
+  const events = {}, invalidations = [], transitions = [], pictures = [];
   let configure, command, onGame, tick, now = 1000, connects = 0, suspended = 0, prepared = 0, reads = 0;
   const C = { DEFAULT_RULES: '', CONSENT_VERSION: 4, state: { log: 'off', window: 'off' }, setRules() {}, setWatch() {}, setPace() {},
     on: (kind, fn) => { events[kind] = fn; }, agreed: () => true, stopLog() {}, stopWindow() { this.state.window = 'off'; }, setReadinessProbe() {},
@@ -37,11 +37,11 @@ async function checkRuntime() {
   const A = { invalidate: (options) => invalidations.push(options), setReadStatus() {}, prepare() { prepared++; }, prepareOCR() {}, onDesktopChange() {},
     suspend() { suspended++; invalidations.push(undefined); }, setForecastEnabled: (enabled) => transitions.push(enabled) };
   const D = { fast: true, follow() {}, trigger() {}, record() {},
-    fastSettings: async () => ({ consent: { version: 4 } }), game: async () => ({ running: true, log: { path: 'test.log' } }),
+    fastSettings: async () => ({ consent: { version: 4 } }), game: async () => ({ running: true, window: 11, log: { path: 'test.log' } }),
     onCommand: (fn) => { command = fn; }, onGame: (fn) => { onGame = fn; }, riot() {}, run() {},
     onFastSettings: (fn) => { configure = fn; } };
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../desktop/lib/fast-runtime.js'), 'utf8'), {
-    window: { TartarusDesktop: D, TartarusCapture: C, TartarusAnalyzer: A, TartarusAuto: { cancel() {}, receive: async () => {} }, addEventListener() {} },
+    window: { TartarusDesktop: D, TartarusCapture: C, TartarusAnalyzer: A, TartarusAuto: { cancel() {}, receive: async (m) => { pictures.push(m); } }, addEventListener() {} },
     localStorage: { getItem: () => '{}', setItem() {} }, performance, setInterval(fn) { tick = fn; }, Date: { now: () => now, UTC: Date.UTC }, console,
   });
   await pause(0);
@@ -52,6 +52,26 @@ async function checkRuntime() {
   assert.equal(connects, 0, 'The entry menu started game-window capture');
   events.seen({ line: 'S16BoardMain Run' }); await pause(0);
   assert.equal(connects, 1); assert.equal(prepared, 1); assert.equal(transitions.at(-1), true);
+  onGame({ running: true, window: 22, log: { path: 'test.log' } }); await pause(0);
+  assert.equal(connects, 2, 'Changing the game HWND did not reconnect the active capture');
+  onGame({ running: true, window: 22, log: { path: 'test.log' } }); await pause(0);
+  assert.equal(connects, 2, 'An unchanged HWND reconnected capture');
+  function seen(line, ms) { events.seen({ line, at: `2026.10.18-13.00.${String(Math.floor(ms / 1000)).padStart(2, '0')}:${String(ms % 1000).padStart(3, '0')}` }); }
+  const countGifts = async () => {
+    await events.frame({ kind: 'board', frame: { close() {} }, hits: [] });
+    return pictures.at(-1).gifts;
+  };
+  seen('UI_S16_Premium_Quality_Fly', 10); seen('UI_S16_Premium_Quality_Fly', 20); seen('Anim_Archive_LightUp, Id = A', 30);
+  assert.equal((await countGifts()).rainbows, 1, 'One Rainbow was counted twice');
+  seen('Anim_Archive_LightUp, Id = B', 40); seen('UI_S16_Premium_Quality_Fly', 50); seen('UI_S16_Premium_Quality_Fly', 60); seen('Anim_Archive_LightUp, Id = B', 70);
+  assert.equal((await countGifts()).rainbows, 2, 'Two Rainbows or a duplicate light were counted incorrectly');
+  seen('S16BoardColoredPop Run', 80); seen('ColoredPop_Confirm', 90); seen('ColoredPop_Confirm', 100);
+  assert.equal((await countGifts()).taken, 1, 'A double Confirm consumed two gifts');
+  seen('UI_S16_Premium_Quality_Fly', 4000); seen('UI_S16_Premium_Quality_Fly', 4010);
+  assert.equal((await countGifts()).rainbows, 3, 'A sound-only Rainbow was lost');
+  seen('Btn_S16GamePlay_Start', 5000);
+  const freshGifts = await countGifts(); assert.equal(freshGifts.rainbows, 0); assert.equal(freshGifts.taken, 0);
+  console.log('PASS: active HWND changes reconnect once; Rainbow sound/light bursts, sound-only fallback, double Confirm and new-run reset count exactly.');
   for (const kind of ['board', 'skip']) {
     events.hit({ kind });
     assert.equal(invalidations.at(-1).forecast, 'keep', 'An animation/new-day banner discarded a useful prediction');

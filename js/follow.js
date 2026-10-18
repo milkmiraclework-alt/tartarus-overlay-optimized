@@ -264,6 +264,19 @@
   let lastAction = 0;
   let lastEat = 0;
   let lastGift = 0; // a Warden's Treasure gift confirmed
+  // Warden's Treasure picks, for the analyzer to count what's waiting (3 a
+  // Treasure with Opulence): each Rainbow reaching the vault, and each gift
+  // confirmed. A Rainbow logs its sound twice and lights one vault cell, all
+  // within a moment (every burst in the user's logs: 2 sounds a cell), so a
+  // burst of Rainbows is its cells, or half its sounds if no cell logged.
+  // Counting each sound made every Rainbow two, and a pick still waiting
+  // after the gift was taken brought the gift advice back (reports 349, 363,
+  // 373). A double-click on Confirm counts once: a pick is its popup
+  // opening, then Confirm.
+  const gifts = { rainbows: 0, taken: 0 };
+  let giftOpen = false;
+  const burst = { last: 0, base: 0, sounds: 0, cells: new Set() };
+
   // The Treasure's popup closing with no gift confirmed just before: the
   // player pressed View Prison Status, and the Treasure still waits.
   function treasureViewed(hits) {
@@ -408,7 +421,7 @@
       if (c.kind === 'treasure' && prefs.read) {
         const to = target();
         if (to) {
-          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh: false, after: treasureAfter(c.hits), blob: null });
+          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh: false, after: treasureAfter(c.hits), gifts: { ...gifts }, blob: null });
           c.sent = true;
         }
       }
@@ -431,7 +444,7 @@
           const after = c.kind === 'treasure' ? treasureAfter(c.hits) : '';
           // treasureView: the board, seen while a Warden's Treasure waits.
           const treasureView = c.kind === 'board' && treasureViewed(c.hits);
-          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh, after, treasureView, pixels: pix, blob });
+          channel.postMessage({ type: 'frame', to: to.id, from: me, id: c.id, kind: c.kind, fresh, after, treasureView, gifts: { ...gifts }, pixels: pix, blob });
           c.sent = true;
         }
       }
@@ -474,7 +487,21 @@
   C.on('seen', (s) => {
     if (/Btn_S16Board_ActionCell/.test(s.line)) lastAction = stampMs(s.at);
     if (/Eating_red_screen/.test(s.line)) lastEat = stampMs(s.at);
-    if (/ColoredPop_Confirm/.test(s.line)) lastGift = stampMs(s.at);
+    if (/ColoredPop_Confirm/.test(s.line)) {
+      lastGift = stampMs(s.at);
+      if (giftOpen) gifts.taken += 1;
+      giftOpen = false;
+    }
+    if (/S16BoardColoredPop Run\b/.test(s.line)) giftOpen = true;
+    const vault = /Anim_Archive_LightUp, Id = (\S+)/.exec(s.line);
+    if (vault || /UI_S16_Premium_Quality_Fly/.test(s.line)) {
+      const t = stampMs(s.at);
+      if (!t || t - burst.last > 3000) Object.assign(burst, { base: gifts.rainbows, sounds: 0, cells: new Set() });
+      burst.last = t;
+      if (vault) burst.cells.add(vault[1]);
+      else burst.sounds += 1;
+      gifts.rainbows = burst.base + Math.max(burst.cells.size, Math.ceil(burst.sounds / 2));
+    }
     seen.unshift(s);
     seen.length = Math.min(seen.length, 200);
     soon(renderSeen);

@@ -30,10 +30,10 @@
     if (result.doors && result.doors.conf >= 0.85) menu = 'doors:' + result.doors.cells.slice().sort((a, b) => a - b).join(',');
     else if (result.decision && result.decision.title && (result.decision.consume || result.decision.replace || result.decision.end || result.decision.office || result.decision.hunt)) {
       const decision = result.warden.cell === 0 && !result.decision.ratway ? { ...result.decision, consume: false, replace: false, end: false, office: true } : result.decision;
-      menu = 'decision:' + ['consume', 'replace', 'end', 'office', 'ratway', 'hunt'].map((key) => !!decision[key]).join(',');
+      menu = 'decision:' + ['consume', 'replace', 'end', 'office', 'ratway', 'hunt'].map((key) => !!decision[key]).join(',') + '|' + JSON.stringify({ instigate: decision.instigate, bestow: decision.bestow, framed: decision.framed });
     }
     if (!menu) return '';
-    return menu + '|' + JSON.stringify({ warden: result.warden.cell, cells: result.cells.map((cell) => [cell.kind, cell.beast, cell.tier, !!cell.nest, !!cell.jaws, !!cell.event]) });
+    return menu + '|' + JSON.stringify({ warden: result.warden.cell, cells: result.cells.map((cell) => [cell.kind, cell.beast, cell.tier, !!cell.nest, !!cell.jaws, !!cell.event, !!cell.prey]) });
   }
   function create() {
     let calibration = null, generation = null, previous = null, stableAt = 0, count = 0;

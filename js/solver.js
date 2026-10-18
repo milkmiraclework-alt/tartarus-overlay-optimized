@@ -58,7 +58,7 @@
     maidenSwapTier: 3, // holding the Severed Iron Maiden, swap up to this tier (Legendary measured best)
     execMargin: 0, // accept an Execution worth more than this
     acceptChain: true, // accept Chain reactions
-    toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'shackles', 'maiden', 'scapegoat', 'hook', 'revenge', 'skewer', 'muzzle', 'ravenous', 'collar', 'saw', 'blacklist', 'guillotine', 'dogtag', 'cage', 'tongs', 'stake', 'scales', 'keys', 'whip', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'], // measured: each tool held from day 1
+    toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'maiden', 'shackles', 'scapegoat', 'revenge', 'muzzle', 'skewer', 'collar', 'ravenous', 'hook', 'saw', 'blacklist', 'guillotine', 'dogtag', 'tongs', 'stake', 'cage', 'whip', 'scales', 'keys', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'], // measured: each tool held from day 1
     toolSets: true, // pick instruments by the measured sets (js/tool-combos.js) when there are any
     office: null, // always 'bestow' or 'instigate' at the office (only to measure the habit)
     giftRank: null, // null scores the gifts on the spot; or a fixed order
@@ -77,8 +77,8 @@
   // day 1: +0.066 ±0.031 Rainbows a run on fresh seeds. wForged and wFire
   // measured no gain and stay 0.
   const PROFILES = {
-    rewards: { tierBase: 3, rainbowMult: 1.5, wOpen: 1.5, wNow: 0.844, wWalk: 0.75, wStep: 0.5, wChain: 6, wStair: 0.25, swapMaxTier: 3, minDevour: 0, execMargin: 0, acceptChain: true, wCrow: 1, wIncident: 40, wPass: 40, wOfficeIncident: 60, wConsume: 20, wKeys: 1, toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'shackles', 'maiden', 'scapegoat', 'hook', 'revenge', 'skewer', 'muzzle', 'ravenous', 'collar', 'saw', 'blacklist', 'guillotine', 'dogtag', 'cage', 'tongs', 'stake', 'scales', 'keys', 'whip', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'] },
-    notools: { tierBase: 2.75, rainbowMult: 12, wOpen: 2.25, wNow: 0.375, wWalk: 1.875, wStep: 0.5, wChain: 24, wStair: 0.125, swapMaxTier: 1, minDevour: 0, execMargin: -5, acceptChain: false, wCrow: 1, toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'shackles', 'maiden', 'scapegoat', 'hook', 'revenge', 'skewer', 'muzzle', 'ravenous', 'collar', 'saw', 'blacklist', 'guillotine', 'dogtag', 'cage', 'tongs', 'stake', 'scales', 'keys', 'whip', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'] },
+    rewards: { tierBase: 3, rainbowMult: 1.5, wOpen: 1.5, wNow: 0.844, wWalk: 0.75, wStep: 0.5, wChain: 6, wStair: 0.25, swapMaxTier: 3, minDevour: 0, execMargin: 0, acceptChain: true, wCrow: 1, wIncident: 40, wPass: 40, wOfficeIncident: 60, wConsume: 20, wKeys: 1, toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'maiden', 'shackles', 'scapegoat', 'revenge', 'muzzle', 'skewer', 'collar', 'ravenous', 'hook', 'saw', 'blacklist', 'guillotine', 'dogtag', 'tongs', 'stake', 'cage', 'whip', 'scales', 'keys', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'] },
+    notools: { tierBase: 2.75, rainbowMult: 12, wOpen: 2.25, wNow: 0.375, wWalk: 1.875, wStep: 0.5, wChain: 24, wStair: 0.125, swapMaxTier: 1, minDevour: 0, execMargin: -5, acceptChain: false, wCrow: 1, toolRank: ['trap', 'maul', 'crown', 'rope', 'claws', 'coin', 'maiden', 'shackles', 'scapegoat', 'revenge', 'muzzle', 'skewer', 'collar', 'ravenous', 'hook', 'saw', 'blacklist', 'guillotine', 'dogtag', 'tongs', 'stake', 'cage', 'whip', 'scales', 'keys', 'pestle', 'fire', 'shortchain', 'axe', 'forged', 'ironbox'] },
   };
   const paramsFor = (st) => PROFILES[st.params.rewards ? 'rewards' : 'notools'];
 
@@ -1087,6 +1087,8 @@
       return options.length ? { type: 'chain', to: options[0].cell } : { type: 'end' };
     }
     if (st.phase === 'office') {
+      // Only one card on offer (the analyzer read the game's office cards).
+      if (st.used && st.used.officeOnly) return { type: 'office', choice: st.used.officeOnly };
       if (P.office) return { type: 'office', choice: P.office };
       const office = officeValues(st, ctx, composition(st, -1).comp);
       return { type: 'office', choice: office.bestow >= office.instigate ? 'bestow' : 'instigate' };
@@ -1256,8 +1258,9 @@
       return out;
     }
     if (st.phase === 'office') {
-      out.push({ action: { type: 'office', choice: 'bestow' }, label: 'Bestow: 1 random inmate rises a tier' });
-      out.push({ action: { type: 'office', choice: 'instigate' }, label: `Instigate: ${(T.instigateCount ? T.instigateCount(st) : T.INSTIGATE_EVENTS) === 1 ? 'a new special event' : `${T.instigateCount ? T.instigateCount(st) : T.INSTIGATE_EVENTS} new special events`}` });
+      const only = st.used && st.used.officeOnly;
+      if (!only || only === 'bestow') out.push({ action: { type: 'office', choice: 'bestow' }, label: 'Bestow: 1 random inmate rises a tier' });
+      if (!only || only === 'instigate') out.push({ action: { type: 'office', choice: 'instigate' }, label: `Instigate: ${(T.instigateCount ? T.instigateCount(st) : T.INSTIGATE_EVENTS) === 1 ? 'a new special event' : `${T.instigateCount ? T.instigateCount(st) : T.INSTIGATE_EVENTS} new special events`}` });
       return out;
     }
     if (st.phase === 'event' && st.event) {

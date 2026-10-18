@@ -559,17 +559,24 @@
   // day.
   // used.noDevour / used.noSwap: the game shows no Consume / Replace card
   // today (the analyzer reads them), so that one isn't on offer, while the
-  // other still is. used.noHunt: no Hunt card either.
+  // other still is. used.noHunt: no Hunt card either. used.huntOnly: the
+  // Hunt's pick is open, on these cells.
   // A Hunt (the Blood-Stained Trap) uses the day's action too.
   const canDevourNow = (state) => state.used.devour < 1 && !state.used.hunt && !state.used.noDevour && (state.used.swap < 1 || !!state.used.devourAfterSwap);
   const canSwapNow = (state) => state.used.devour < 1 && !state.used.hunt && !state.used.noSwap && state.used.swap < state.params.swapsPerDay;
 
   // Blood-Stained Trap: with the warden on a Lion that has no prey mark, a
   // Hunt can mark any inmate the Lion can consume that has none either.
+  // The analyzer's boards can say more: inmate.marked, an inmate wearing a
+  // Prey mark whose Lion isn't known (its crosshair, read from a picture),
+  // and used.huntOnly, the cells the game framed on the Hunt's pick.
   function huntTargets(state) {
     const here = state.cells[state.position];
-    if (!has(state, 'trap') || !here || here.sealed || !here.inmate || here.inmate.beast !== 'lion' || linkOf(state, here.inmate.id)) return [];
-    return boardCells(state).filter((c) => c.n !== here.n && canEat(state, here.inmate, c.inmate) && !linkOf(state, c.inmate.id)).map((c) => c.n);
+    if (!has(state, 'trap') || !here || here.sealed || !here.inmate || here.inmate.beast !== 'lion') return [];
+    const framed = state.used && Array.isArray(state.used.huntOnly) ? state.used.huntOnly : null;
+    if (framed) return framed.filter((n) => n !== here.n && state.cells[n] && !state.cells[n].sealed && state.cells[n].inmate);
+    if (linkOf(state, here.inmate.id)) return [];
+    return boardCells(state).filter((c) => c.n !== here.n && canEat(state, here.inmate, c.inmate) && !linkOf(state, c.inmate.id) && !c.inmate.marked).map((c) => c.n);
   }
   const canHuntNow = (state) => state.phase === 'manage' && !state.chaining && state.used.devour < 1 && state.used.swap < 1 && !state.used.hunt && !state.used.noHunt && huntTargets(state).length > 0;
 
@@ -1217,6 +1224,10 @@
   function officeAct(state, choice) {
     if (state.phase !== 'office') return fail("Instigate and Bestow come with a visit to the warden's office.");
     if (state.pending.length) return fail('Make your pending choice first.');
+    // used.officeOnly: the game shows only that card (the analyzer reads
+    // them; report 383 had Bestow alone).
+    const only = state.used && state.used.officeOnly;
+    if (only && choice !== only) return fail(`Your game offers only ${only === 'bestow' ? 'Bestow' : 'Instigate'} today.`);
     const events = [];
     if (choice === 'instigate') instigate(state, events, 'Instigate');
     else if (choice === 'bestow') bestow(state, events, 'Bestow');

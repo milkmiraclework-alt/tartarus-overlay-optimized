@@ -5,7 +5,7 @@
     return JSON.stringify({
       day: st.day, phase: st.phase, position: st.position, destinations: st.destinations,
       chain: st.chain, chaining: !!st.chaining, ratway: !!st.ratway, used: st.used,
-      cells: st.cells.map((c) => [c.sealed, c.inmate && [c.inmate.beast, c.inmate.tier],
+      cells: st.cells.map((c) => [c.sealed, c.inmate && [c.inmate.beast, c.inmate.tier, !!c.inmate.marked],
         c.known, c.known && c.hidden && [c.known >= 2 ? c.hidden.beast : null, c.hidden.tier],
         c.seen !== false && !!c.event, c.nest, c.scratch, c.ivory, c.atLeast]),
       tools: st.tools, vault: st.vault.map((v) => v.beast), prey: st.prey,

@@ -1,18 +1,26 @@
 # Tartarus Overlay (desktop app, local only for now)
 
-The optimized local build is `0.2.17-local.17`, based on the author's source
-revision `f35a50a96976bdc3b577a4f7b5655cebda9ba1b7` (18 October 2026).
+The optimized local build is `0.2.18-local.18`, based on the author's source
+revision `bc528594d5017c0ce400e1e7a973f36f20b69653` (18 October 2026).
 `lib/upstream-version.json` records the imported revision: the Git branch HEAD
 can still be older while local changes are being developed. Source changes
 are checked asynchronously at startup and every six hours; a notice links to
 the author's diff without downloading or overwriting the local build.
 
-Local.17 keeps the compatible local.16 result-cache namespace across these
-UI/lifecycle fixes. Repeated frames pause and resume matching foreground jobs
-with all samples intact. Warm objective OCR finishes before advice starts;
+The local.17 UI/lifecycle fixes are retained. Repeated frames pause and resume
+matching foreground jobs with all samples intact. Warm objective OCR finishes before advice starts;
 OCR startup remains asynchronous. Overlay updates reuse unchanged DOM lines,
 so a progress message cannot detach a pressed confirmation button. Pending
 readings reconcile instruments against the latest user confirmation.
+
+The 0.2.18 import updates door/Replace/frame/badge recognition, Prey marks and
+game-framed Hunt targets, one-card office choices, and the measured instrument
+strategy. Rainbow sound/light bursts count once in both the direct runtime
+and browser follow path. The largest matching game window is selected by
+Win32 and capture reconnects when its handle changes. A stale log yields to
+an active UE_game_N.log. The rule/strategy revision starts a new result-cache
+namespace; compatible UI-only changes retain that namespace independently of
+the asset tag. Full rollout budgets and the read-only updater remain intact.
 
 The integration includes second meals at every rarity, the 10-Rainbow cap,
 Opulence's gift chain, corrected Muzzle/Instigate/Usurpation rules, Extra

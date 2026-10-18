@@ -35,7 +35,7 @@
       const right = Math.max(S.at(loc, 5, 0)[0], S.at(loc, 5, 3)[0]) + 60 * loc.s;
       const bottom = Math.max(S.at(loc, 0, 3)[1], S.at(loc, 5, 3)[1]) + 30 * loc.s;
       const top = Math.min(S.at(loc, 0, 0)[1], S.at(loc, 5, 0)[1]) - 95 * loc.s;
-      if (sameRegion(img, last.img, [0, bottom - 4, img.width - 1, img.height - 1]) && sameRegion(img, last.img, [img.width * 0.2 - 4, 0, img.width * 0.8 + 4, top + 4])) {
+      if (!last.result.doors?.hidden?.length && sameRegion(img, last.img, [0, bottom - 4, img.width - 1, img.height - 1]) && sameRegion(img, last.img, [img.width * 0.2 - 4, 0, img.width * 0.8 + 4, top + 4])) {
         out.doors = last.result.doors; out.days = last.result.days; stats.panels++;
       }
       if (sameRegion(img, last.img, [0, 0, left + 4, img.height - 1])) { out.tools = last.result.tools; stats.panels++; }

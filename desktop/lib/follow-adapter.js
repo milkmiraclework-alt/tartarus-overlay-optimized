@@ -226,7 +226,13 @@
 
   function onGame(g) {
     const started = g.running && !game.running;
+    // The game's window changed as it runs (a launcher with its title was
+    // taken first, reports 371 and 372): shared again.
+    const moved = g.running && game.running && g.window && game.window && g.window !== game.window;
     game = g;
+    if (moved && C.state.window === 'on') {
+      C.stopWindow();
+    }
     if (started) {
       stoppedLog = false;
       stoppedWindow = false;

@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const T = require('../js/engine.js'), S = require('../js/solver.js'), K = require('../js/solver-cache.js');
 const taskWindow = { Tartarus: T, TartarusSolver: S, TartarusSolverCache: { ...K, create(options) {
-  assert.equal(options.version, 'mc-v2:rules=f35a50a:?v=20261018perf16:budget=9600', 'UI update invalidated compatible persisted results');
+  assert.equal(options.version, 'mc-v2:rules=bc52859:?v=20261018perf18:budget=9600', 'Wrong cache revision for the imported rules/strategy');
   return K.create(options);
 } }, TartarusDesktop: { fast: true } };
 const writes = new Map(), messages = [];
@@ -14,7 +14,7 @@ const init = '  buildBoard();\n  bind();\n  render();';
 assert.ok(source.includes(init));
 source = source.replace(init, '  window.checkCalculation = { blankModel, ask, solver, reader, useScan, invalidate, confirmTools, cornerObjective, setModel: (m) => { model = m; }, getModel: () => model };');
 vm.runInNewContext(source, {
-  window: taskWindow, document: { currentScript: { src: 'http://localhost/js/analyze.js?v=20261018perf17' }, getElementById: () => ({ classList: { toggle() {}, add() {}, remove() {} }, replaceChildren() {} }), createElement: () => ({ getContext: () => ({ drawImage() {} }) }) }, navigator: { hardwareConcurrency: 2 },
+  window: taskWindow, document: { currentScript: { src: 'http://localhost/js/analyze.js?v=ui-only-check' }, getElementById: () => ({ classList: { toggle() {}, add() {}, remove() {} }, replaceChildren() {} }), createElement: () => ({ getContext: () => ({ drawImage() {} }) }) }, navigator: { hardwareConcurrency: 2 },
   localStorage: { getItem: (key) => writes.get(key) || null, setItem: (key, value) => writes.set(key, value) },
   setTimeout, clearTimeout, queueMicrotask, console,
   Worker: class { postMessage(m) { messages.push(m); } terminate() {} }

@@ -13,7 +13,9 @@
   let latestRead = null;
   const gifts = { rainbows: 0, taken: 0 };
   let giftOpen = false;
-  const fly = { n: 0, at: 0 }, lit = new Map();
+  // One Rainbow logs two sounds and one vault-cell light. Count the burst
+  // by unique cells, or half the sounds if cell lines are unavailable.
+  const burst = { last: 0, base: 0, sounds: 0, cells: new Set() };
   // Consent permits following the log, not continuous game-window capture.
   // A missed close event also expires, and the next real board event wakes us.
   const IDLE_MS = 30000;
@@ -104,7 +106,8 @@
   C.on('seen', (event) => {
     const line = event.line;
     if (/Btn_S16GamePlay_Start\b/.test(line)) {
-      gifts.rainbows = 0; gifts.taken = 0; giftOpen = false; fly.n = 0; fly.at = 0; lit.clear();
+      gifts.rainbows = 0; gifts.taken = 0; giftOpen = false;
+      Object.assign(burst, { last: 0, base: 0, sounds: 0, cells: new Set() });
       if (A.giftsDone) A.giftsDone();
     }
     if (/S16BoardMain (?:Hide|Destory|Destroy)\b|S16GamePlayEntry (?:Run|Destory|Destroy)\b|S16GamePlayCheckOut Run|UI_S16_Riot_Interface|Btn_S16GamePlay_CheckOut_(?:AbandonChallenge|StartChallenge)|LogLoad: LoadMap:/.test(line)) suspend('left-board');
@@ -118,14 +121,12 @@
     }
     if (/S16BoardColoredPop Run\b/.test(line)) giftOpen = true;
     const vault = /Anim_Archive_LightUp, Id = (\S+)/.exec(line);
-    const giftTime = vault || /UI_S16_Premium_Quality_Fly/.test(line) ? stampMs(event.at) : 0;
-    if (giftTime && giftTime - fly.at > 1000) fly.n = 0;
-    if (vault && !(lit.has(vault[1]) && giftTime - lit.get(vault[1]) < 2000)) {
-      lit.set(vault[1], giftTime);
-      if (fly.n > 0) fly.n--; else gifts.rainbows++;
-      while (lit.size > 20) lit.delete(lit.keys().next().value);
-    } else if (!vault && giftTime) {
-      gifts.rainbows++; fly.n++; fly.at = giftTime;
+    if (vault || /UI_S16_Premium_Quality_Fly/.test(line)) {
+      const giftTime = stampMs(event.at);
+      if (!giftTime || giftTime - burst.last > 3000) Object.assign(burst, { base: gifts.rainbows, sounds: 0, cells: new Set() });
+      burst.last = giftTime;
+      if (vault) burst.cells.add(vault[1]); else burst.sounds++;
+      gifts.rainbows = burst.base + Math.max(burst.cells.size, Math.ceil(burst.sounds / 2));
     }
     if (/S16GamePlayCheckOut Run|UI_S16_Riot_Interface/.test(line)) D.riot(true);
     else if (/S16GamePlayEntry Run|Btn_S16GamePlay_Start|S16BoardTaskPop Run|S16BoardRelicPop Run|S16BoardMain Run/.test(line)) D.riot(false);
@@ -192,7 +193,12 @@
     if (cmd === 'capture' && activate()) sync().then(() => { if (active && C.state.window === 'on') C.captureNow('manual'); });
     if (cmd === 'run-over') suspend('run-over');
   });
-  D.onGame((next) => { game = next; sync(); });
+  D.onGame((next) => {
+    const moved = game.running && next.running && game.window && next.window && game.window !== next.window;
+    game = next;
+    if (moved && C.state.window === 'on') C.stopWindow();
+    sync();
+  });
   D.onFastSettings(configure);
   Promise.all([D.fastSettings(), D.game()]).then(([next, state]) => { game = state || {}; configure(next); });
   setInterval(() => {
