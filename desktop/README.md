@@ -1,11 +1,18 @@
 # Tartarus Overlay (desktop app, local only for now)
 
-The optimized local build is `0.2.17-local.16`, based on the author's source
+The optimized local build is `0.2.17-local.17`, based on the author's source
 revision `f35a50a96976bdc3b577a4f7b5655cebda9ba1b7` (18 October 2026).
 `lib/upstream-version.json` records the imported revision: the Git branch HEAD
 can still be older while local changes are being developed. Source changes
 are checked asynchronously at startup and every six hours; a notice links to
 the author's diff without downloading or overwriting the local build.
+
+Local.17 keeps the compatible local.16 result-cache namespace across these
+UI/lifecycle fixes. Repeated frames pause and resume matching foreground jobs
+with all samples intact. Warm objective OCR finishes before advice starts;
+OCR startup remains asynchronous. Overlay updates reuse unchanged DOM lines,
+so a progress message cannot detach a pressed confirmation button. Pending
+readings reconcile instruments against the latest user confirmation.
 
 The integration includes second meals at every rarity, the 10-Rainbow cap,
 Opulence's gift chain, corrected Muzzle/Instigate/Usurpation rules, Extra

@@ -144,7 +144,7 @@
     } else {
       id++; latestRead = null; Auto.cancel();
       triggeredAt = performance.now();
-      A.invalidate({ forecast: ['board', 'skip'].includes(event.kind) ? 'keep' : 'stop' });
+      A.invalidate({ forecast: ['board', 'skip'].includes(event.kind) ? 'keep' : 'stop', preserve: ['board', 'skip'].includes(event.kind) });
       A.setReadStatus({ at: Date.now(), kind: event.kind, phase: 'settling' });
       if (event.kind === 'instruments') A.prepareOCR();
     }
@@ -152,7 +152,7 @@
   C.on('frame', async (event) => {
     if (!active || !game.running || !C.agreed()) { if (event.frame) event.frame.close(); return; }
     const mine = ++id, started = performance.now();
-    A.invalidate({ forecast: 'pause' });
+    A.invalidate({ forecast: 'pause', preserve: true });
     lastFrame = { at: Date.now(), kind: event.kind, ok: !!event.frame, why: event.why || '', settle: event.settle || null };
     if (!event.frame && event.kind !== 'treasure') diag.failed++;
     tell();
@@ -184,6 +184,7 @@
     const timing = latestRead; latestRead = null;
     D.record({ type: 'timing', id: timing.id, readMs: Math.round(timing.readMs), solveMs: Math.round(performance.now() - timing.readAt), totalMs: Math.round(performance.now() - timing.trigger), cacheHit: !!snapshot.cacheHit,
       forecastHit: !!snapshot.forecastHit, forecastResumed: !!snapshot.forecastResumed, forecast: A.forecastInfo ? A.forecastInfo() : null,
+      calculation: A.calculationInfo ? A.calculationInfo() : null,
       reader: A.readerInfo ? A.readerInfo() : null, settle: lastFrame && lastFrame.settle });
     if (timing.image) saveScreenshot(timing.id);
   });

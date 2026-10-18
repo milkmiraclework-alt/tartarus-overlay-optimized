@@ -1,6 +1,6 @@
 /* Real analyzer/worker/click/persistence flow with controlled panel readings. */
 'use strict';
-module.exports = async function checkInstruments(resume = false) {
+module.exports = async function checkInstruments(resume = false, throughOverlay = false) {
   const A = window.TartarusAnalyzer, T = window.Tartarus;
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const check = (ok, message) => { if (!ok) throw new Error(message); };
@@ -40,13 +40,16 @@ module.exports = async function checkInstruments(resume = false) {
       return A.desktopSnapshot();
     }
     if (!resume) {
-      const before = await observe(['skewer']);
-      check(before.toolsConfirm.includes('An icon'), 'Fixture failed to reproduce the icon warning');
-      document.getElementById('az-tools-ok').click();
+      const before = await observe(['skewer', 'cage']);
+      check(before.toolsConfirm.includes('panel shows'), 'Fixture failed to reproduce the extra-icon warning');
+      if (throughOverlay) {
+        await new Promise((resolve) => { window.__instrumentConfirmation = { resolve }; });
+        delete window.__instrumentConfirmation;
+      } else document.getElementById('az-tools-ok').click();
       check(!A.desktopSnapshot().toolsConfirm, 'These are right did not clear the warning');
       check(A.desktopSnapshot().cacheHit, 'Confirmation recomputed identical Monte Carlo inputs');
     }
-    for (const ids of [['skewer'], ['cage'], [], ['skewer']]) check(!(await observe(ids)).toolsConfirm, 'A later frame forgot confirmation');
+    for (const ids of [['skewer'], ['cage'], [], ['skewer', 'cage']]) check(!(await observe(ids)).toolsConfirm, 'A later frame forgot confirmation');
     const data = saved();
     check(data.model.tools.join() === 'crown' && data.model.toolsConfirmed.tools === 'crown', 'Confirmed instruments were not saved correctly');
     return { resume, frames: 4, tools: data.model.tools, confirmation: data.model.toolsConfirmed, cacheHit: A.desktopSnapshot().cacheHit };

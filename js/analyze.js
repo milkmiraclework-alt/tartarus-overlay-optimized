@@ -477,8 +477,11 @@
 
   // ---------- Analysis ----------
 
-  const solver = { workers: null, failed: false, id: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
-  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=f35a50a:${SCRIPT_QUERY}:budget=${PLAYOUT_BUDGET}` }) : null;
+  const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
+  // Keep valid perf16 results across UI/lifecycle fixes. Bump this revision
+  // only when solver/rule semantics or the rollout policy actually change.
+  const SOLVER_CACHE_REVISION = '?v=20261018perf16';
+  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=f35a50a:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
     stats: { generated: 0, completed: 0, hits: 0, resumed: 0, cancelled: 0, reused: 0, familyHits: 0, familyResumed: 0 } };
@@ -694,6 +697,20 @@
     const options = S.candidates(st).length;
     const rollouts = clamp(Math.round(PLAYOUT_BUDGET / Math.max(1, options)), 400, 1600);
     const cacheKey = solverCache ? resultKey(model, rollouts) : '';
+    // A second picture/confirmation can change recognition metadata while
+    // the actual Monte Carlo inputs stay identical. Resume the same job
+    // and sample streams instead of throwing its partial rounds away.
+    if (reuse && cacheKey && solver.st && solver.cacheKey === cacheKey &&
+        solver.workers && solver.shares && !settled()) {
+      stopForecast();
+      solver.resumed++;
+      solver.st = st; solver.key = key;
+      solver.workers.forEach((worker, k) => {
+        if (!solver.shares[k].done) worker.postMessage({ id: solver.id, promote: true });
+      });
+      render();
+      return true;
+    }
     let cached = null;
     if (reuse) {
       if (solverCache) cached = solverCache.get(cacheKey, rollouts);
@@ -781,7 +798,18 @@
     return solver.workers;
   }
 
+  function invalidate(options = {}) {
+    desktopStale = true;
+    if (!options.preserve) { solver.id++; solver.shares = null; solver.meta = null; }
+    clearTimeout(mergeTimer); mergeTimer = 0;
+    if (options.forecast === 'pause') pauseForecast();
+    else if (options.forecast !== 'keep') stopForecast();
+    if (!forecast.active && !forecast.plan && solver.workers) for (const worker of solver.workers) worker.postMessage({ id: solver.id, ...(options.preserve ? { pause: true } : { cancel: true }) });
+    desktopChanged();
+  }
+
   function startCheck(id, st, rollouts, optionCount) {
+    solver.starts++;
     // postMessage copies its payload; solve also owns its own state copy.
     const state = Object.assign({}, st, { log: [] });
     if ((optionCount === undefined ? S.candidates(state).length : optionCount) <= 1) {
@@ -1820,7 +1848,7 @@
 
   // ---------- Reading a screenshot ----------
 
-  const reader = { worker: null, failed: false, id: 0, pending: null, image: null, result: null, reading: null, ms: 0, picks: new Map(), pickId: 0 };
+  const reader = { worker: null, failed: false, id: 0, pending: null, image: null, result: null, reading: null, ms: 0, picks: new Map(), pickId: 0, cornerPending: null };
   let readyWorker = null, readyFailed = false, readyCalibration = null, readyId = 0;
   const readyJobs = new Map();
   function stopReadyWorker() {
@@ -2019,6 +2047,7 @@
 
   function runScan(imageData, opts, bitmap) {
     const o = opts || {};
+    if (reader.cornerPending) reader.cornerPending.cancel();
     if (bitmap) reader.lastCapture = null;
     // Follow my game's pictures come every step: their screenshot stays
     // folded away, so the board doesn't move down each time.
@@ -2050,7 +2079,18 @@
       reader.result = result;
       reader.reading = result.ok ? scanToModel(result, model) : null;
       // The run's objective and its count, from the board's corner.
-      if (result.ok && result.objective) cornerObjective(reader.image, result.objective, reader.reading.model.day);
+      if (result.ok && result.objective) {
+        // Loading OCR can involve a network fetch. Only join an already
+        // warm worker; cold startup retains the asynchronous fallback.
+        const join = FAST_DESKTOP && o.quiet && ocrReady;
+        if (join) {
+          const task = {};
+          const cancelled = new Promise((resolve) => { task.cancel = () => { task.cancelled = true; corner.ticket++; corner.busy = false; resolve(); }; });
+          task.promise = Promise.race([cornerObjective(reader.image, result.objective, reader.reading.model.day, true), cancelled]);
+          reader.cornerPending = task;
+          task.promise.finally(() => { if (reader.cornerPending === task) reader.cornerPending = null; });
+        } else cornerObjective(reader.image, result.objective, reader.reading.model.day);
+      }
       scanStatus(result.ok ? `Read in ${(reader.ms / 1000).toFixed(1)} s.` : `${result.reason} Try a screenshot of the prison screen, with the whole board in view.`, !result.ok);
       // controls: the board's own door cards or decision row showed, which
       // View Prison Status never does: no Warden's Treasure is open.
@@ -2273,7 +2313,7 @@
     return { ok: true, id: best.id, name: T.OBJECTIVES[best.id].name, completed: /completed/i.test(text), have, need: have === null ? null : need };
   }
   // day: the reading's, as Auto Screenshot Mode applies it only after this.
-  function cornerObjective(source, box, day) {
+  function cornerObjective(source, box, day, deferAdvice = false) {
     // Each new day, the count again; a new run (the day goes back), all.
     if (day !== corner.day) Object.assign(corner, { tries: 0, done: false });
     corner.day = day;
@@ -2283,7 +2323,7 @@
     corner.busy = true;
     corner.tries += 1;
     const ticket = ++corner.ticket, generation = ocrGeneration, readId = reader.id;
-    readCornerObjective(source, box).then((read) => {
+    return readCornerObjective(source, box).then((read) => {
       if (ticket !== corner.ticket) return;
       corner.busy = false;
       if (generation !== ocrGeneration || readId !== reader.id || model.day !== day) return;
@@ -2314,7 +2354,7 @@
       }
       if (wasKnown && !counted) return;
       changed();
-      if (wasFresh) ask(true);
+      if (wasFresh && !deferAdvice) ask(true, false, FAST_DESKTOP);
       const so = counted ? ` (${read.completed || read.have >= need ? 'met' : `${read.have} of ${need} so far`})` : '';
       toast(wasKnown ? `${read.name}: ${so.slice(2, -1)}, read from the board’s corner.` : `This run’s objective: ${read.name}${so}, read from the board’s corner. It’s set under Objective.`, 'ok');
     }, () => {
@@ -2356,7 +2396,7 @@
   // pinned version from jsDelivr, cached by the browser). It runs in this
   // browser; the picture isn't sent anywhere. Without it, the cards are
   // read by their art alone.
-  let ocr = null, ocrGeneration = 0, ocrError = '';
+  let ocr = null, ocrGeneration = 0, ocrError = '', ocrReady = false;
   function ocrWorker() {
     if (!ocr) {
       const generation = ocrGeneration;
@@ -2371,10 +2411,10 @@
         .then(() => generation === ocrGeneration ? window.Tesseract.createWorker('eng') : null)
         .then(async (worker) => {
           if (generation !== ocrGeneration) { if (worker) await worker.terminate(); return null; }
-          ocrError = '';
+          ocrError = ''; ocrReady = !!worker;
           return worker;
         })
-        .catch((error) => { if (generation === ocrGeneration) { ocr = null; ocrError = String(error.message || error); } return null; });
+        .catch((error) => { if (generation === ocrGeneration) { ocr = null; ocrReady = false; ocrError = String(error.message || error); } return null; });
     }
     let timer;
     const limit = new Promise((resolve) => { timer = setTimeout(() => {
@@ -3272,6 +3312,14 @@
   function useScan() {
     const rd = reader.reading;
     if (!rd) return;
+    // A confirmation/edit can arrive after scanToModel prepared this read.
+    // Reconcile its panel against the latest user-confirmed instruments.
+    if (reader.result && reader.result.ok) {
+      const notes = [];
+      rd.tools = runTools(reader.result.tools?.tools || [], model, rd.model, notes);
+      rd.model.tools = rd.tools.map((t) => t.sim);
+      for (const note of notes) if (!rd.notes.includes(note)) rd.notes.push(note);
+    }
     undo.push({ model: JSON.parse(JSON.stringify(model)), selected, shot });
     if (undo.length > 30) undo.shift();
     leaveShot();
@@ -3284,7 +3332,7 @@
     applied = null;
     via = { scan: true, filled: [...rd.checks].map((n) => `c${n}`), touched: new Set() };
     if (SHARE) SHARE.markManual();
-    solver.st = null;
+    if (!solver.cacheKey || resultKey(model, solver.target) !== solver.cacheKey) solver.st = null;
     selected = rd.checks.size ? Math.min(...rd.checks) : model.warden;
     // The screenshot stays in view, with what was read drawn on it, to
     // compare with the board.
@@ -3593,12 +3641,14 @@
     window.TartarusAnalyzer = {
       onDesktopChange: (fn) => { desktopListeners.add(fn); return () => desktopListeners.delete(fn); },
       cacheInfo: () => solverCache ? solverCache.info() : null,
+      calculationInfo: () => ({ id: solver.id, starts: solver.starts, resumed: solver.resumed, rounds: solver.result?.rounds || 0, target: solver.target || 0 }),
       forecastInfo,
       setForecastEnabled: (enabled) => { forecastEnabled = !!enabled; if (!forecastEnabled) stopForecast(); },
       // The log watcher stays alive outside the board. Everything expensive
       // can be recreated on entry; keep completed persistent summaries only.
       suspend: () => {
         forecastEnabled = false;
+        if (reader.cornerPending) reader.cornerPending.cancel();
         corner.ticket++; corner.busy = false; corner.tries = 0; corner.done = false;
         window.TartarusAnalyzer.invalidate();
         for (const worker of solver.workers || []) worker.terminate();
@@ -3616,19 +3666,11 @@
         for (const image of new Set([reader.image, reader.lastCapture])) if (image && typeof image.close === 'function') image.close();
         reader.image = null; reader.lastCapture = null; reader.result = null; reader.reading = null;
         stopReadyWorker(); readyFailed = false; readyCalibration = null;
-        const previousOCR = ocr; ocr = null; ocrGeneration++;
+        const previousOCR = ocr; ocr = null; ocrReady = false; ocrGeneration++;
         if (previousOCR) previousOCR.then((worker) => { if (worker) return worker.terminate(); }).catch(() => {});
       },
       desktopSnapshot,
-      invalidate: (options = {}) => {
-        desktopStale = true;
-        solver.id++;
-        clearTimeout(mergeTimer); mergeTimer = 0;
-        if (options.forecast === 'pause') pauseForecast();
-        else if (options.forecast !== 'keep') stopForecast();
-        if (!forecast.active && !forecast.plan && solver.workers) for (const worker of solver.workers) worker.postMessage({ id: solver.id, cancel: true });
-        desktopChanged();
-      },
+      invalidate,
       setReadStatus: (active, last) => { desktopReading = active; if (last) desktopLastRead = last; desktopChanged(); },
       readFrame: (bitmap) => new Promise((resolve) => readBitmap(bitmap, { quiet: true, folded: true, onRead: resolve })),
       readFrameDirect: (bitmap) => new Promise((resolve) => readBitmap(bitmap, { quiet: true, folded: true, direct: true, onRead: resolve })),
@@ -3654,6 +3696,10 @@
       giftCounts,
       giftsDone: () => { gifts.waiting = 0; },
       useReading: () => useScan(),
+      completeReading: () => {
+        const task = reader.cornerPending;
+        return task ? task.promise.then(() => !task.cancelled) : Promise.resolve(true);
+      },
       ask: () => ask(true),
       askCached: () => ask(true, false, true),
       recommendation: () => (fresh() && settled() ? recommendation() : null),

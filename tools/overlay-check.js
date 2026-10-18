@@ -244,14 +244,38 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     console.log('PASS: local source runtime, native dependencies and a single hidden backend.');
     if (process.argv.includes('--instruments-only')) {
       const checkInstruments = require('./instruments-overlay-check.js');
-      const before = await evaluate(`(${checkInstruments.toString()})(false)`);
+      const overlayTarget = targets.find((t) => t.url.endsWith('/overlay.html'));
+      assert.ok(overlayTarget, 'Overlay renderer was not created');
+      const overlayPage = await connect(overlayTarget.webSocketDebuggerUrl); sockets.push(overlayPage.ws);
+      await evaluate('TartarusDesktop.follow({active:true,agreed:false,log:"on",window:"on",hits:1});true');
+      const beforePending = evaluate(`(${checkInstruments.toString()})(false,true)`);
+      for (let i = 0; i < 500 && !await evaluate('!!window.__instrumentConfirmation'); i++) await pause(20);
+      assert.ok(await evaluate('!!window.__instrumentConfirmation'), 'Confirmation fixture did not become ready');
+      let point;
+      for (let i = 0; i < 100; i++) {
+        point = await overlayPage.evaluate(`(()=>{const b=document.querySelector('[data-cmd="tools-ok"]');if(!b)return null;window.__pressedConfirm=b;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+        if (point) break;
+        await pause(20);
+      }
+      assert.ok(point, 'Overlay confirmation button was not shown');
+      await overlayPage.call('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+      for (const progress of [20, 35, 55]) {
+        await evaluate(`TartarusDesktop.advice({...TartarusAnalyzer.desktopSnapshot(),working:true,progress:${progress}});true`);
+        await pause(50);
+        assert.ok(await overlayPage.evaluate('window.__pressedConfirm.isConnected'), 'Progress update detached the pressed confirmation button');
+      }
+      await overlayPage.call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+      for (let i = 0; i < 100 && !await evaluate('!!JSON.parse(localStorage.getItem("tartarus-sim:analyzer:v1")).model.toolsConfirmed'); i++) await pause(20);
+      assert.ok(await evaluate('!!JSON.parse(localStorage.getItem("tartarus-sim:analyzer:v1")).model.toolsConfirmed'), 'Physical overlay click did not confirm instruments');
+      await evaluate('window.__instrumentConfirmation.resolve();true');
+      const before = await beforePending;
       await page.call('Page.reload', { ignoreCache: true });
       for (let i = 0; i < 200; i++) {
         try { if (await evaluate('!!window.__tartarusFastRuntime')) break; } catch {}
         await pause(25);
       }
       const after = await evaluate(`(${checkInstruments.toString()})(true)`);
-      console.log(`PASS: real instrument confirmation button, unchanged solver cache and 8 subsequent frames across reload: ${JSON.stringify({ before, after })}`);
+      console.log(`PASS: physical overlay click across 3 progress updates, unchanged solver cache and 8 conflicting/missing/extra-icon frames across reload: ${JSON.stringify({ before, after })}`);
       return;
     }
     if (process.argv.includes('--panel-manifest')) {

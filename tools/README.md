@@ -1053,3 +1053,18 @@ exact coverage increased from 10/57 transitions to 22/57 with the same 48
 samples/four-outcome limit. This replay measures possible input matches, not
 live completion timing or whole-overlay latency; animation/recognition waits
 remain and a new live session is needed to measure the practical gain.
+
+## Local.17 lifecycle regression checks
+
+`node tools/calculation-check.js` checks that duplicate reads and racing
+instrument confirmations retain the foreground job, shares and every partial
+sample; real input changes and manual Recheck start fresh. It also checks
+objective OCR ordering/cancellation and the compatible local.16 cache namespace.
+Cold OCR loading stays asynchronous; an already warm corner read is applied
+before its board's advice starts.
+
+`node tools/overlay-check.js --instruments-only` presses and releases the actual
+overlay button through Chromium input events, with three advice/progress IPC
+updates between mouse-down and mouse-up. It checks the native command path,
+confirmation persistence over conflicting/missing/extra-icon frames and reload,
+and reuse of the unchanged full-budget summary.

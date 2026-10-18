@@ -136,7 +136,16 @@
         : line('info', 'Advice comes with the next move. Or take a picture now.', button('Picture', 'capture')));
     }
 
-    $('body').replaceChildren(...out);
+    // Progress/log updates must not detach a button between mouse-down and
+    // mouse-up. Keep unchanged lines, including their live button nodes.
+    const body = $('body'), previous = [...body.children], kept = new Set();
+    out.forEach((next, i) => {
+      const old = previous.find((el) => !kept.has(el) && el.isEqualNode(next));
+      const el = old || next;
+      kept.add(el);
+      if (body.children[i] !== el) body.insertBefore(el, body.children[i] || null);
+    });
+    for (const el of previous) if (!kept.has(el)) el.remove();
     const dot = (el, on, what) => {
       el.className = `dot ${on === true ? 'is-on' : on === false ? 'is-off' : ''}`;
       el.title = what;

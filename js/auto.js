@@ -150,13 +150,18 @@
         return;
       }
     }
-    answer({ read });
+    if (!read.ok) answer({ read });
     // The board behind a Warden's Treasure that couldn't be read: say so,
     // rather than ask for View Prison Status again.
     if (!read.ok && m.treasureView && A.toast) A.toast('The board behind the Warden’s Treasure couldn’t be read from that picture. View it again a little longer, or press Advise with the board as it is.', 'bad');
     // The newest picture wins: an older one still being read is left.
     if (!read.ok || mine !== newest) return;
     A.useReading();
+    // The corner's objective/count belongs to this same picture. Apply it
+    // before starting the full check, rather than restart that check later.
+    if (reuse && A.completeReading && await A.completeReading() === false) return;
+    if (mine !== newest) return;
+    answer({ read });
     if (A.langBoard) A.langBoard(m.bitmap && A.image ? A.image() : bitmap);
     lastBoardAt = Date.now();
     answer({ state: 'used' });
