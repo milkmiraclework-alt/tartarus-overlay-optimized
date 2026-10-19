@@ -1087,3 +1087,16 @@ when the panel pixels were reused. Ordinary cards retain a single reading pass.
 The runtime regression in `node tools/forecast-check.js` covers one reconnect
 per HWND change, double-sound/unique-cell Rainbow bursts, sound-only fallback,
 double Confirm and new-run reset without capturing a real game.
+
+## Local 0.2.19 integration checks
+
+`node tools/upstream-check.js` also checks ambiguous contract badges, multiple
+samples of one contract, removal of the mislabeled Tyranny reference and
+preservation of the confirmed local instrument samples.
+`node tools/overlay-check.js --contracts-only` checks all contract names in
+the hidden backend and actual overlay header, plus instrument search, Enter,
+Escape, Done and confirmation in the real dialog. The instruments-only check
+also verifies that background readings leave the dialog closed, opening the
+board shows the prompt, and confirmation from the overlay closes it.
+The solver cache namespace stays compatible with local.18 because the engine,
+solver rules and policy tables are unchanged.

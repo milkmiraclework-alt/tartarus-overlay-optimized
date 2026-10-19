@@ -2,8 +2,8 @@
 
 Форк [Tartarus Simulator / CoffeeBns](https://github.com/blahdot3h/tartarus-simulator)
 для быстрого получения подсказок в оверлее Torchlight: Infinite.
-Версия: **0.2.18-local.18**, правила и распознавание синхронизированы с
-[исходником автора `bc52859`](https://github.com/blahdot3h/tartarus-simulator/tree/bc528594d5017c0ce400e1e7a973f36f20b69653).
+Версия: **0.2.19-local.19**, правила и распознавание синхронизированы с
+[исходником автора `12b85db`](https://github.com/blahdot3h/tartarus-simulator/tree/12b85db88cc8a3ba9c63a7d52be7b9ddb0c888fd).
 
 ## Что оптимизировано
 
@@ -46,7 +46,7 @@
 
 Замеры сборки **0.2.17-local.16** относительно исходника автора **0.2.17**,
 с одинаковыми правилами. Это исторические замеры оптимизаций; полный повтор
-замеров относительно новой базы 0.2.18 и замер игрового цикла ещё нужны.
+замеров относительно новой базы 0.2.19 и замер игрового цикла ещё нужны.
 Замеры 18 октября 2026: Windows x64, Ryzen 5 3600, 12 логических ядер,
 Node.js 22.16.0 и Electron 44.5.1 / Node.js 24.21.0. Числа ниже — медианы
 после прогрева; реализации запускались поочерёдно. Это замеры отдельных
@@ -77,7 +77,8 @@ Node.js 22.16.0 и Electron 44.5.1 / Node.js 24.21.0. Числа ниже — м
 уменьшения рабочего бюджета Монте-Карло.
 
 Условия и результаты проверок: [отчёт замеров](tools/results/overlay-performance-20261018.json).
-Проверки переноса новой базы: [0.2.18](tools/results/upstream-0.2.18-validation.json).
+Проверки переноса новой базы: [0.2.18](tools/results/upstream-0.2.18-validation.json),
+[0.2.19](tools/results/upstream-0.2.19-validation.json).
 
 ## Запуск оптимизированного режима
 
@@ -108,6 +109,7 @@ node tools/overlay-check.js --solver-baseline BASELINE/js
 node tools/overlay-check.js --forecast
 node tools/calculation-check.js
 node tools/overlay-check.js --instruments-only
+node tools/overlay-check.js --contracts-only
 node tools/upstream-check.js
 node tools/desktop-upstream-check.js
 node tools/scan-panel-check.js

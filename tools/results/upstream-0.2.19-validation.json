@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-19",
+  "build": "0.2.19-local.19",
+  "upstream": {
+    "commit": "12b85db88cc8a3ba9c63a7d52be7b9ddb0c888fd",
+    "release": "0.2.19",
+    "previous": "bc528594d5017c0ce400e1e7a973f36f20b69653",
+    "commitsImported": 6,
+    "includesPostReleaseBadgeCorrection": true
+  },
+  "sourceHashFormat": "SHA256 of UTF-8 source after CRLF-to-LF normalization.",
+  "sourceSha256": {
+    "js/engine.js": "18f69a881bdfff419878f7fc1e545e5bd429fb5bdd9103335ce37ab7158df964",
+    "js/solver.js": "0046b2597dda81d6f488d86b8d326f8bb04dbab56307855abc9b14e471a2ee1c",
+    "js/tool-combos.js": "ee1caafac83a91e38d7a429b7d5f2c1daec8b48eac561eca717b49c307abec38",
+    "js/scan.js": "dcbe277d39355ba17497f776b281b04701a952a059df3e8b12e9b9f9f31bdd59",
+    "js/pick-data.js": "110dd77fd3dae81bfb70792a03b61fefb567c4dfb0407855805cf0ecc3334ef3",
+    "js/scan-worker.js": "3bdc2f3f953f6f4a5b75b707e8827a04ac346a1c35c39e465ce9d1c5ae4e7e5a",
+    "js/scan-tracker.js": "826100947b79dcbdbebe85f1909e316bb49beaaf2507bb62cf8a13cec7405b62",
+    "js/solver-forecast.js": "5be68fc839f0db736789fe800d8de77e1a3a32884fa821f90cac05dd1c904c93",
+    "js/analyze.js": "bd4aa585449ee6e2f0f808a33ac70cb8a2e66d2c615ecfc99bfef3f5270094ad",
+    "js/auto.js": "54275a8b7e2b0f3f6ebb612876e590f7ebc4a9626215695accca969a2c0534fd",
+    "desktop/main.js": "c7f65f9bec3d9bd02c87e24c1fd1285c8f7bf4b53d1e1882f779ba82fa9160ac",
+    "desktop/lib/fast-runtime.js": "39918108e8e0591b0307975c97bb07cd94fb62d2c0d61fe49a984ab190d29f7e",
+    "desktop/lib/analyzer-adapter.js": "d50e2a9dfdd9f6836b0aa758d6af6fc5cb69f496790ac026f1610bf34bc35255",
+    "desktop/lib/overlay.js": "f1594390fc7eaed5a4a57d0605ae94f0da579bba2cd4f2da460c7723cf65753a"
+  },
+  "checks": {
+    "legalEaterMealPairs": 110592,
+    "seededGames": 264,
+    "decisionsCompared": 18563,
+    "allComparedMonteCarloSamplesAndRankingsEqual": true,
+    "fullReaderOutputsEqualToUpstream": true,
+    "syntheticReaderCases": 24,
+    "readerResolutions": 3,
+    "privateReaderFrames": {
+      "count": 2,
+      "width": 2560,
+      "height": 1440
+    },
+    "readerParallelAndTrackedOutputsEqual": true,
+    "readerWorkerFailureFallback": true,
+    "readerMovementResizeAndReacquire": true,
+    "contractBadge": [
+      "ambiguous cards remain unset with a manual-choice note",
+      "multiple samples of one contract are grouped together",
+      "mislabeled Tyranny sample removed; Cage Fight and Opulence retained",
+      "known start card preserved",
+      "confirmed local instrument samples retained"
+    ],
+    "actualElectron": [
+      "four contract header states, including the hidden fast backend",
+      "instrument dialog search/Enter/Escape/Done/confirmation",
+      "dialog stays closed in the hidden backend; opens on board correction",
+      "physical overlay confirmation across three progress updates closes the dialog",
+      "confirmation and unchanged MC cache survive eight ambiguous frames and reload",
+      "1080p/4K exact reader pixels",
+      "three board entry/exit cycles release every owned worker/image",
+      "full MC budget, manual bypass and persistent cache across reload and restart",
+      "rolling forecast, exact partial promotion, menu reuse and zero workers after disabling capture"
+    ],
+    "regressions": [
+      "partial MC samples retained across duplicate frames and confirmation races",
+      "objective OCR applied before advice; cancellation fences stale tasks",
+      "native window identity and active numbered log selection",
+      "Rainbow sound/light counting",
+      "capture/readiness/forecast lifecycle and fallback handling"
+    ]
+  },
+  "resultCache": {
+    "namespace": "mc-v2:rules=bc52859:?v=20261018perf18:budget=9600",
+    "compatibleWithPreviousBuild": true,
+    "reason": "Engine, solver rules and policy tables unchanged from local.18; complete normalized board, including start card, remains part of the key.",
+    "instrumentConfirmationsPreserved": true
+  },
+  "performance": "Validation only. No new FPS, live-cycle latency or profit-per-hour speedup is claimed."
+}

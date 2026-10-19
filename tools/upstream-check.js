@@ -84,6 +84,26 @@ const F = require('../js/solver-forecast.js');
 const unmarked = S.clone(marked); unmarked.cells[2].inmate.marked = false;
 assert.notEqual(F.visibleKey(marked), F.visibleKey(unmarked));
 console.log('PASS: Prey marks, framed Hunt targets, one-card office choices, covered doors, protected start cards and reader/solver/forecast conversions.');
+const ambiguous = A.scanToModel({ ...picture, badge: { id: null, alike: ['tyranny', 'cagefight'] } }, base);
+assert.equal(ambiguous.model.startEvent, 'none', 'An ambiguous badge guessed a contract');
+assert.ok(ambiguous.notes.some(note => /Tyranny or Cage Fight/.test(note)), 'Ambiguous contracts did not explain the manual choice');
+assert.equal(A.scanToModel({ ...picture, badge: { id: null, alike: ['tyranny', 'cagefight'] } }, { ...base, startEvent: 'opulence' }).model.startEvent, 'opulence');
+const scan = require('../js/scan.js'), pick = require('../js/pick-data.js'), extra = require('./panel-samples.json');
+assert.ok(pick.badges.some(b => b.id === 'cagefight'));
+assert.ok(pick.badges.some(b => b.id === 'opulence'));
+assert.ok(!pick.badges.some(b => b.id === 'tyranny'), 'The mislabeled Cage Fight sample is still registered as Tyranny');
+assert.deepEqual(pick.icons.filter(i => i.from === 'confirmed-panel'), extra.icons, 'Confirmed local icon references were lost');
+const img = { width: 200, height: 200, data: new Uint8ClampedArray(200 * 200 * 4) };
+for (let i = 0; i < img.data.length; i += 4) img.data.set([90 + i % 120, 100 + (i >> 5) % 140, 110, 255], i);
+const label = { x0: 30, x1: 54.4, y1: 20 };
+const feat = scan.artFeature(img, ...scan.badgeBox(label, true));
+const readBadge = badges => scan.readBadge(img, label, { badges });
+assert.equal(readBadge([{ id: 'cagefight', feat }]).id, 'cagefight');
+assert.equal(readBadge([{ id: 'cagefight', feat }, { id: 'cagefight', feat }]).id, 'cagefight', 'Two samples of one contract were treated as different contracts');
+const tied = readBadge([{ id: 'tyranny', feat }, { id: 'cagefight', feat }]);
+assert.equal(tied.id, null); assert.deepEqual(tied.alike, ['tyranny', 'cagefight']);
+assert.equal(readBadge([]).id, null);
+console.log('PASS: ambiguous badges stay unset, duplicate samples of one card remain valid, mislabeled Tyranny reference removed and confirmed local icons retained.');
 (async () => {
   let calls = 0;
   const fetch = (data, ok = true) => async (url, options) => {

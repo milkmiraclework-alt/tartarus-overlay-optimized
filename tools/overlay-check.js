@@ -242,6 +242,30 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     for (let i = 0; i < 100 && !await evaluate('!!window.__tartarusFastRuntime'); i++) await pause(50);
     assert.deepEqual(await evaluate('({fast:TartarusDesktop.fast,runtime:!!window.__tartarusFastRuntime,hidden:TartarusAnalyzer.desktopSnapshot().background})'), { fast: true, runtime: true, hidden: true });
     console.log('PASS: local source runtime, native dependencies and a single hidden backend.');
+    if (process.argv.includes('--contracts-only')) {
+      const overlayTarget = targets.find(t => t.url.endsWith('/overlay.html'));
+      assert.ok(overlayTarget, 'Overlay renderer was not created');
+      const overlayPage = await connect(overlayTarget.webSocketDebuggerUrl); sockets.push(overlayPage.ws);
+      const cards = { cagefight: 'Cage Fight', tyranny: 'Tyranny', opulence: 'Opulence', none: '' };
+      await evaluate('TartarusDesktop.follow({active:true,agreed:false,log:"on",window:"on",hits:1});true');
+      for (const [id, name] of Object.entries(cards)) {
+        const snapshot = await evaluate(`(()=>{const sel=document.getElementById('az-start-event');sel.value=${JSON.stringify(id)};sel.dispatchEvent(new Event('change'));return TartarusAnalyzer.desktopSnapshot();})()`);
+        assert.equal(snapshot.contract, name, 'Hidden fast backend lost the selected contract');
+        for (let i = 0; i < 100; i++) {
+          const header = await overlayPage.evaluate('document.getElementById("day").textContent');
+          if (Object.values(cards).filter(Boolean).every(card => header.includes(card) === (card === name))) break;
+          if (i === 99) assert.fail('Overlay header did not follow the selected contract: ' + header);
+          await pause(20);
+        }
+      }
+      console.log('PASS: hidden fast backend and actual overlay header show Cage Fight, Tyranny, Opulence and no contract correctly.');
+      await overlayPage.evaluate('Overlay.command("board");true');
+      for (let i = 0; i < 100 && await evaluate('TartarusAnalyzer.desktopSnapshot().background'); i++) await pause(20);
+      assert.equal(await evaluate('TartarusAnalyzer.desktopSnapshot().background'), false);
+      const checkDialog = require('./contracts-overlay-check.js');
+      console.log(`PASS: actual instrument dialog: ${JSON.stringify(await evaluate(`(${checkDialog.toString()})()`))}`);
+      return;
+    }
     if (process.argv.includes('--instruments-only')) {
       const checkInstruments = require('./instruments-overlay-check.js');
       const overlayTarget = targets.find((t) => t.url.endsWith('/overlay.html'));
@@ -251,6 +275,10 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       const beforePending = evaluate(`(${checkInstruments.toString()})(false,true)`);
       for (let i = 0; i < 500 && !await evaluate('!!window.__instrumentConfirmation'); i++) await pause(20);
       assert.ok(await evaluate('!!window.__instrumentConfirmation'), 'Confirmation fixture did not become ready');
+      assert.equal(await evaluate('document.getElementById("az-tools-dialog").open'), false, 'A hidden confirmation opened a background instrument dialog');
+      await overlayPage.evaluate('Overlay.command("board");true');
+      for (let i = 0; i < 100 && !await evaluate('document.getElementById("az-tools-dialog").open'); i++) await pause(20);
+      assert.ok(await evaluate('document.getElementById("az-tools-dialog").contains(document.getElementById("az-tools-ok"))'), 'Opening the board did not show the instrument confirmation dialog');
       let point;
       for (let i = 0; i < 100; i++) {
         point = await overlayPage.evaluate(`(()=>{const b=document.querySelector('[data-cmd="tools-ok"]');if(!b)return null;window.__pressedConfirm=b;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
@@ -267,6 +295,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       await overlayPage.call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
       for (let i = 0; i < 100 && !await evaluate('!!JSON.parse(localStorage.getItem("tartarus-sim:analyzer:v1")).model.toolsConfirmed'); i++) await pause(20);
       assert.ok(await evaluate('!!JSON.parse(localStorage.getItem("tartarus-sim:analyzer:v1")).model.toolsConfirmed'), 'Physical overlay click did not confirm instruments');
+      assert.equal(await evaluate('document.getElementById("az-tools-dialog").open'), false, 'Overlay confirmation did not close the instrument dialog');
       await evaluate('window.__instrumentConfirmation.resolve();true');
       const before = await beforePending;
       await page.call('Page.reload', { ignoreCache: true });
