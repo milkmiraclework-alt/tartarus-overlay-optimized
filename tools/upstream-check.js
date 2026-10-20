@@ -57,7 +57,7 @@ const taskWindow = { Tartarus: T, TartarusSolver: S };
 const init = '  buildBoard();\n  bind();\n  render();';
 const source = fs.readFileSync(require.resolve('../js/analyze.js'), 'utf8').replace(/\r\n/g, '\n');
 assert.ok(source.includes(init));
-vm.runInNewContext(source.replace(init, '  window.checkImported = { blankModel, scanToModel, buildState, forecastModels };'), {
+vm.runInNewContext(source.replace(init, '  window.checkImported = { blankModel, scanToModel, buildState, forecastModels, modelFrom };'), {
   window: taskWindow, document: { currentScript: null }, navigator: { hardwareConcurrency: 4 }, localStorage: { getItem: () => null }
 });
 const A = taskWindow.checkImported, base = A.blankModel(); base.tools = ['trap'];
@@ -104,6 +104,94 @@ const tied = readBadge([{ id: 'tyranny', feat }, { id: 'cagefight', feat }]);
 assert.equal(tied.id, null); assert.deepEqual(tied.alike, ['tyranny', 'cagefight']);
 assert.equal(readBadge([]).id, null);
 console.log('PASS: ambiguous badges stay unset, duplicate samples of one card remain valid, mislabeled Tyranny reference removed and confirmed local icons retained.');
+// October 20: a meal selection must keep the actual framed subset, including
+// when the previous board has another legally edible inmate.
+const mealBase = A.blankModel(); mealBase.step = 'manage'; mealBase.warden = 1;
+for (const [n, beast] of [[1, 'mammoth'], [2, 'lion'], [3, 'wolf']]) mealBase.cells[n] = { kind: 'inmate', beast, tier: 0 };
+mealBase.tools = ['crown']; mealBase.toolsConfirmed = { tools: 'crown', slots: 2 };
+const mealPicture = { ...picture, decision: null, chain: { targets: [2] },
+  cells: picture.cells.map(c => c.n === 1 ? { ...c, beast: 'mammoth' } : c.n === 2 ? { ...c, beast: 'lion', prey: false } : c.n === 3 ? { ...c, beast: 'wolf' } : c) };
+const mealModel = A.scanToModel(mealPicture, mealBase).model, meal = A.buildState(mealModel).st;
+assert.equal(JSON.stringify(meal.used.mealOnly), '[2]');
+assert.equal(JSON.stringify(T.startOptions(meal).map(o => o.cell)), '[2]');
+assert.equal(mealModel.toolsConfirmed.tools, 'crown', 'A meal screen forgot the confirmed instruments');
+assert.equal(T.devour(meal, 1, 3).ok, false, 'A consume accepted an unframed meal');
+assert.ok(T.devour(meal, 1, 2).ok); assert.equal(meal.used.mealOnly, null, 'A bite retained the old menu restriction');
+const chain = board([], 3); chain.cells[1].inmate.beast = 'mammoth'; chain.cells[2].inmate.beast = 'lion'; chain.cells[3].inmate.beast = 'wolf';
+chain.used.devour = 1; chain.chaining = { eater: chain.cells[1].inmate.id, at: 0, bites: [] }; chain.used.mealOnly = [2];
+assert.deepEqual(T.chainOptions(chain).map(o => o.cell), [2]);
+assert.ok(S.candidates(chain).filter(o => o.action.type === 'chain').every(o => o.action.to === 2));
+assert.equal(T.chainBite(chain, 3).ok, false);
+assert.equal(JSON.stringify(A.modelFrom(chain).mealOnly), '[2]');
+assert.equal(JSON.stringify(A.forecastModels(chain, mealBase)[0].mealOnly), '[2]', 'Forecast conversion lost the framed menu');
+const otherMenu = S.clone(chain); otherMenu.used.mealOnly = [3];
+assert.notEqual(F.visibleKey(chain), F.visibleKey(otherMenu), 'Forecast merged different meal menus');
+assert.ok(T.chainBite(chain, 2).ok); assert.equal(chain.used.mealOnly, null);
+assert.equal(A.scanToModel({ ...picture, decision: { title: true, consume: true, end: true } }, mealModel).model.mealOnly, null, 'Ordinary decision cards retained the previous meal restriction');
+console.log('PASS: framed meals reach the reader, engine, saved model and forecasts; unframed bites fail and a successful bite clears the menu.');
+// The Maiden must inspect the OLD inmate and the block BEFORE Scapegoat.
+function maidenSwap(tiers, scapegoat) {
+  const st = board(['maiden', ...(scapegoat ? ['scapegoat'] : [])], tiers.length);
+  st.params.swapWeights = [0, 0, 1, 0, 0];
+  tiers.forEach((tier, i) => { st.cells[i + 1].inmate.tier = tier; });
+  const level = tiers.slice(1).filter(t => t > tiers[0]).length === tiers.slice(1).filter(t => t < tiers[0]).length;
+  if (scapegoat && tiers.length >= 3) {
+    const ctx = S.context(st), expectedLoss = 2 * tiers.slice(1).reduce((sum, tier) => sum + ctx.v[tier], 0) / (tiers.length - 1);
+    assert.equal(ctx.scapegoat.loss, expectedLoss, 'Scapegoat loss counted the inmate being replaced');
+  }
+  assert.ok(T.swap(st).ok);
+  assert.equal(st.log.some(e => e.x && e.x.type === 'maiden'), level);
+  assert.equal(st.cells[1].inmate ? st.cells[1].inmate.tier : st.vault.length ? T.RAINBOW : -1, level ? T.RAINBOW : 2);
+}
+for (const scapegoat of [false, true]) for (const tiers of [[0, 2, 2], [1, 0, 2], [0], [0, 0, 2, 2, 4]]) maidenSwap(tiers, scapegoat);
+assert.equal(T.DEFAULT_PARAMS.beastToolOdds, 12);
+assert.equal(T.BEAST_TOOLS.length, 8);
+for (const id of T.TOOL_IDS) assert.equal(T.toolWeight(null, id), T.BEAST_TOOLS.includes(id) ? 0.12 : 1);
+for (let seed = 0; seed < 48; seed++) {
+  const st = T.newGame({ seed: 'WEIGHTED-OFFER-' + seed, params: { beastToolOdds: 0 } });
+  assert.ok(st.pending[0].options.every(id => !T.BEAST_TOOLS.includes(id)));
+  st.pending[0].rerolls = 1; assert.ok(T.rerollOffer(st).ok);
+  assert.ok(st.pending[0].options.every(id => !T.BEAST_TOOLS.includes(id)));
+}
+for (const [beastToolOdds, expected] of [[12, { type: 'choose', id: 'coin' }], [100, { type: 'reroll' }]]) {
+  const st = T.newGame({ seed: 'WEIGHTED-REROLL', params: { beastToolOdds } });
+  st.pending = [{ kind: 'tool', options: ['coin', 'keys', 'fire'], rerolls: 1 }];
+  assert.deepEqual(S.decide(st), expected, 'Re-roll advice ignored the instrument odds');
+}
+console.log('PASS: Maiden checks the replaced inmate before removals, Scapegoat values only other inmates, weighted start/re-roll offers and Coin advice.');
+const baselineAt = process.argv.indexOf('--baseline');
+if (baselineAt >= 0) {
+  const path = require('node:path'), baselinePath = path.resolve(process.argv[baselineAt + 1]);
+  const savedEngine = globalThis.Tartarus, savedSolver = globalThis.TartarusSolver;
+  let previous;
+  try { globalThis.Tartarus = require(path.join(path.dirname(baselinePath), 'engine.js')); previous = require(baselinePath); }
+  finally { globalThis.Tartarus = savedEngine; globalThis.TartarusSolver = savedSolver; }
+  const cases = [];
+  for (const chaining of [false, true]) {
+    const st = board([], 3); st.cells[2].inmate.beast = 'lion'; st.used.mealOnly = [2];
+    if (chaining) { st.used.devour = 1; st.chaining = { eater: st.cells[1].inmate.id, at: 0, bites: [] }; }
+    cases.push(st);
+  }
+  for (const tools of [['maiden'], ['maiden', 'scapegoat']]) for (const tiers of [[0, 2, 2], [1, 0, 2]]) {
+    const st = board(tools, tiers.length); tiers.forEach((tier, i) => { st.cells[i + 1].inmate.tier = tier; }); cases.push(st);
+  }
+  for (const beastToolOdds of [0, 12, 100]) {
+    const st = T.newGame({ seed: 'IMPORT-REROLL', params: { ...noEvents, beastToolOdds } });
+    st.pending = [{ kind: 'tool', options: ['coin', 'keys', 'fire'], rerolls: 1 }]; cases.push(st);
+  }
+  const json = value => JSON.stringify(value, (key, v) => (key === 'pass' || key === 'points') && v === 0 ? undefined : v);
+  const finish = (solver, state, stream) => {
+    const job = solver.solve(state, { seed: 7919, rollouts: 16, stream }); let result;
+    do { result = job.step(8); } while (!result.done);
+    return json({ result, rows: job.rows });
+  };
+  for (const st of cases) {
+    st.maxDays = st.day + 2;
+    assert.equal(json(S.candidates(st)), json(previous.candidates(st)), 'Imported rule candidates differ from upstream');
+    for (const stream of [0, 1]) assert.equal(finish(S, st, stream), finish(previous, st, stream), 'Imported rule samples/ranking differ from upstream');
+  }
+  console.log(`PASS: ${cases.length} targeted Maiden/Scapegoat, framed-meal and weighted re-roll positions match upstream candidates and every Monte Carlo sample on two streams.`);
+}
 (async () => {
   let calls = 0;
   const fetch = (data, ok = true) => async (url, options) => {

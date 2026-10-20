@@ -144,6 +144,8 @@
       // The office shows one card only (read from a screenshot): 'bestow' or
       // 'instigate'.
       officeOnly: null,
+      // The meals the game framed on a meal pick (only those can be eaten).
+      mealOnly: null,
       eventKind: 'chain',
       // rerolls: a pet's re-rolls left on an instrument offer. picks: the
       // Warden's Treasure picks waiting, this one included (3 a Treasure
@@ -275,7 +277,7 @@
     st.phase = 'manage';
 
     const usedToday = () => {
-      st.used = { swap: m.swapUsed ? 1 : 0, devour: m.devourUsed ? 1 : 0, devourAfterSwap: !!m.consumeOffered, noSwap: !!m.noSwap, noDevour: !!m.noDevour, noHunt: !!m.noHunt, huntOnly: Array.isArray(m.huntOnly) ? m.huntOnly.slice() : null, officeOnly: m.officeOnly || null };
+      st.used = { swap: m.swapUsed ? 1 : 0, devour: m.devourUsed ? 1 : 0, devourAfterSwap: !!m.consumeOffered, noSwap: !!m.noSwap, noDevour: !!m.noDevour, noHunt: !!m.noHunt, huntOnly: Array.isArray(m.huntOnly) ? m.huntOnly.slice() : null, officeOnly: m.officeOnly || null, mealOnly: Array.isArray(m.mealOnly) ? m.mealOnly.slice() : null };
     };
     switch (m.step) {
       case 'patrol': {
@@ -417,6 +419,7 @@
     m.noHunt = !!st.used.noHunt;
     m.huntOnly = Array.isArray(st.used.huntOnly) ? st.used.huntOnly.slice() : null;
     m.officeOnly = st.phase === 'office' && st.used.officeOnly ? st.used.officeOnly : null;
+    m.mealOnly = Array.isArray(st.used.mealOnly) ? st.used.mealOnly.slice() : null;
     m.ended = st.phase === 'ended';
     return m;
   }
@@ -488,8 +491,8 @@
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
   // Bump for rule/strategy imports, retain across compatible UI-only fixes.
-  const SOLVER_CACHE_REVISION = '?v=20261018perf18';
-  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=bc52859:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
+  const SOLVER_CACHE_REVISION = '?v=20261020perf20';
+  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=50dac44:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
     stats: { generated: 0, completed: 0, hits: 0, resumed: 0, cancelled: 0, reused: 0, familyHits: 0, familyResumed: 0 } };
@@ -2886,6 +2889,9 @@
     }
     m.dest = [];
     m.chainArmed = false;
+    // Only the meals the game framed can be eaten now (report 385: the
+    // board before held a meal the game didn't offer, and it was advised).
+    m.mealOnly = r.chain.targets.slice();
     const tools = runTools(r.tools?.tools || [], base, m, notes);
     m.tools = tools.map((t) => t.sim);
     return { model: m, checks, notes, chromatic: (m.vault || []).length, tools, unsim: [], chain: r.chain.targets };
@@ -3053,6 +3059,7 @@
     m.noHunt = false;
     m.huntOnly = null;
     m.officeOnly = null;
+    m.mealOnly = null;
     // Without the cards (a picture taken as they come up), a board of the
     // same day with the warden in the same cell keeps what the board
     // before knew. And if the warden's inmate has changed since, today's
