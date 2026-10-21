@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-21",
+  "build": "0.2.19-local.21",
+  "upstream": {
+    "commit": "c6896f2e8d42cc858c93c38ab97ab164ca41b7b2",
+    "release": "0.2.19",
+    "previous": "50dac4429916860e093483a6524bd6504c1a7572",
+    "commitsReviewed": 6
+  },
+  "sourceHashFormat": "SHA256 of UTF-8 source after CRLF-to-LF normalization.",
+  "sourceSha256": {
+    "js/engine.js": "1623a734c290b442de0298c3c1efb4f6b6a0d7247ea273402a4baaca34c0f2e9",
+    "js/solver.js": "dd44e2a1e59c60b5a0b0cc3adfd4bf3eb7ad9ae2d12f3db63a853ea4542303be",
+    "js/tool-combos.js": "dc164a9e9f8767a1ce14b336d4aa0364bc87fcd6dbd3c21af2ba54f8d830fd52",
+    "js/guide-data.js": "59b9b8737f0d8808076ab504acd4bceb94b7bfd807d2a2d3f8902c72817846ff",
+    "js/analyze.js": "30db58cd578641ed610871f8b77bf42f2412c3464004257a48c577a6571ab14a",
+    "js/auto.js": "54275a8b7e2b0f3f6ebb612876e590f7ebc4a9626215695accca969a2c0534fd",
+    "js/scan.js": "dcbe277d39355ba17497f776b281b04701a952a059df3e8b12e9b9f9f31bdd59",
+    "js/scan-worker.js": "3bdc2f3f953f6f4a5b75b707e8827a04ac346a1c35c39e465ce9d1c5ae4e7e5a",
+    "js/solver-worker.js": "636456511839eef103ef03fa2d52dd1b612116d1f281ad581c420aaa333e7a07",
+    "js/solver-forecast.js": "5be68fc839f0db736789fe800d8de77e1a3a32884fa821f90cac05dd1c904c93",
+    "js/solver-cache.js": "509bf87c003abdb05676e786f7ec3ce2a224dddca3059f54154923d0309fb021",
+    "desktop/main.js": "c7f65f9bec3d9bd02c87e24c1fd1285c8f7bf4b53d1e1882f779ba82fa9160ac",
+    "desktop/lib/fast-runtime.js": "39918108e8e0591b0307975c97bb07cd94fb62d2c0d61fe49a984ab190d29f7e",
+    "desktop/lib/overlay.js": "f1594390fc7eaed5a4a57d0605ae94f0da579bba2cd4f2da460c7723cf65753a",
+    "tools/live-data.js": "89ab551ba826904456e33f6111ad015040cb9ab1b3edd13599f58806910d341b",
+    ".github/workflows/live-data.yml": "24de78df2a6c54f453456515abbae97af489cd48d17f6ae4a6c2e96188505f7a"
+  },
+  "checks": {
+    "legalEaterMealPairs": 110592,
+    "seededGames": 264,
+    "decisionsCompared": 18774,
+    "allComparedMonteCarloSamplesAndRankingsEqual": true,
+    "targetedPositionsCompared": 12,
+    "targetedMonteCarloStreams": 2,
+    "targetedRolloutsPerOption": 16,
+    "hunt": [
+      "last-day Hunt cannot beat an immediate Rainbow",
+      "early Hunt retains remaining morning gains",
+      "consuming linked prey considers only mornings left"
+    ],
+    "fullReaderOutputsEqualToUpdatedUpstream": true,
+    "syntheticReaderCases": 24,
+    "readerResolutions": 3,
+    "privateReaderFrames": {
+      "count": 2,
+      "width": 2560,
+      "height": 1440
+    },
+    "runtime": [
+      "full production rollout budget",
+      "duplicate reads/confirmation retain partial samples",
+      "manual Recheck bypasses cache",
+      "rolling two-step forecasts and exact partial promotion",
+      "92 shared patrol menus retain exact samples and ranking",
+      "actual Windows capture and exact 1080p/4K pixels",
+      "three entry/exit cycles release all owned workers and images",
+      "persistent results survive reload/app restart",
+      "physical overlay button across three progress updates",
+      "confirmed instruments survive eight ambiguous frames and reload",
+      "80 further controlled instrument-panel frames"
+    ],
+    "collector": [
+      "503 retries halve pages from 200 to 25",
+      "partial board rows and cursor survive a later error",
+      "restart resumes from saved cursor without duplicate rows",
+      "measurement errors preserve downloaded boards",
+      "401 fails once without retry or cursor change",
+      "tests use local fixtures/fake fetch only"
+    ],
+    "testHarness": {
+      "coldStartWaitMs": 30000,
+      "initialInstrumentRunExceededPreviousStartupWait": true,
+      "instrumentRerunPassed": true,
+      "dependencyDiagnosticsOnSlowStart": true
+    },
+    "rawGameFramesIncluded": false
+  },
+  "readerIntegration": {
+    "finalReaderByteIdenticalToLocal20": true,
+    "reason": "Our axis/offset search already avoids projections per candidate. Adding scaled Float64 references to it did not show a consistent gain across two frames, so the existing reader is retained.",
+    "discardedTrial": {
+      "method": "Two warmup rounds, four measured alternating rounds per variant; coarse search only, prepared pixels held constant.",
+      "measurements": [
+        {
+          "frame": "A",
+          "beforeMs": 2393.32,
+          "trialMs": 2729.21,
+          "beforeToTrialRatio": 0.877,
+          "samplesPerVariant": 4,
+          "exactCandidatesAndScores": true
+        },
+        {
+          "frame": "B",
+          "beforeMs": 3272.26,
+          "trialMs": 2682.24,
+          "beforeToTrialRatio": 1.22,
+          "samplesPerVariant": 4,
+          "exactCandidatesAndScores": true
+        }
+      ],
+      "deployed": false
+    }
+  },
+  "resultCache": {
+    "namespace": "mc-v2:rules=c6896f2:?v=20261021perf21:budget=9600",
+    "previousStrategyResultsReused": false,
+    "instrumentConfirmationsPreserved": true
+  },
+  "productionMonteCarlo": {
+    "budget": 9600,
+    "minRolloutsPerOption": 400,
+    "maxRolloutsPerOption": 1600
+  },
+  "performance": "No new live-session FPS, full-cycle latency or profit-per-hour speedup is claimed; discarded coarse-search trial is not a speedup claim for the shipped build."
+}

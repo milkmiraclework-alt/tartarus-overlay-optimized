@@ -159,6 +159,21 @@ for (const [beastToolOdds, expected] of [[12, { type: 'choose', id: 'coin' }], [
   assert.deepEqual(S.decide(st), expected, 'Re-roll advice ignored the instrument odds');
 }
 console.log('PASS: Maiden checks the replaced inmate before removals, Scapegoat values only other inmates, weighted start/re-roll offers and Coin advice.');
+function huntEndgame(daysLeft) {
+  const st = board(['trap'], 2);
+  st.params.rewards = false; st.day = st.maxDays - daysLeft;
+  st.cells[1].inmate.beast = 'lion'; st.cells[2].inmate.beast = 'wolf';
+  st.cells[1].inmate.tier = st.cells[2].inmate.tier = T.SUPREME;
+  return st;
+}
+const finalHunt = huntEndgame(0), finalAction = S.decide(finalHunt);
+assert.deepEqual(finalAction, { type: 'devour', to: 2 }, 'Last-day Hunt beat a Rainbow available now');
+assert.ok(S.apply(finalHunt, finalAction).ok); assert.equal(finalHunt.vault.length, 1);
+assert.deepEqual(S.decide(huntEndgame(15)), { type: 'hunt', to: 2 }, 'An early Hunt lost the value of its remaining mornings');
+const expiringPrey = huntEndgame(1); assert.ok(T.hunt(expiringPrey, 2).ok);
+expiringPrey.used.hunt = false; expiringPrey.day = expiringPrey.maxDays;
+assert.deepEqual(S.decide(expiringPrey), { type: 'devour', to: 2 }, 'An expired future Prey gain prevented a last-day Rainbow');
+console.log('PASS: last-day Hunt cannot outrank an immediate Rainbow, early Hunt remains useful, and breaking a mark values only the mornings left.');
 const baselineAt = process.argv.indexOf('--baseline');
 if (baselineAt >= 0) {
   const path = require('node:path'), baselinePath = path.resolve(process.argv[baselineAt + 1]);
@@ -185,12 +200,13 @@ if (baselineAt >= 0) {
     do { result = job.step(8); } while (!result.done);
     return json({ result, rows: job.rows });
   };
+  for (const st of cases) st.maxDays = st.day + 2;
+  for (const daysLeft of [0, 1, 15]) cases.push(huntEndgame(daysLeft));
   for (const st of cases) {
-    st.maxDays = st.day + 2;
     assert.equal(json(S.candidates(st)), json(previous.candidates(st)), 'Imported rule candidates differ from upstream');
     for (const stream of [0, 1]) assert.equal(finish(S, st, stream), finish(previous, st, stream), 'Imported rule samples/ranking differ from upstream');
   }
-  console.log(`PASS: ${cases.length} targeted Maiden/Scapegoat, framed-meal and weighted re-roll positions match upstream candidates and every Monte Carlo sample on two streams.`);
+  console.log(`PASS: ${cases.length} targeted Hunt, Maiden/Scapegoat, framed-meal and weighted re-roll positions match upstream candidates and every Monte Carlo sample on two streams.`);
 }
 (async () => {
   let calls = 0;

@@ -1135,3 +1135,22 @@ against the author's solver, in addition to the broader solver regression.
 The cache namespace changes to rules `50dac44` with this import. Old completed
 summaries cannot be reused under the new rules and instrument valuations;
 instrument confirmations remain in the separately saved analyzer model.
+
+## Local.21 rule import (2026-10-21)
+
+`node tools/upstream-check.js --baseline BASELINE/js/solver.js` also checks
+last-day Hunt versus an immediate Rainbow, early Hunt and consuming prey when
+its future morning gains have expired. Twelve targeted positions compare
+every Monte Carlo sample on two streams with the author's solver.
+
+The author's scaled-reference search was tried alongside our axis tables.
+Four measured alternating rounds after two warmups on two local frames gave
+opposite timing changes, so the existing optimized reader is retained. Full
+reader outputs are compared against the author's updated search separately;
+the author's reported search speedup is not claimed for this fork.
+
+`node tools/live-data-check.js` verifies collector page-size retries, durable
+partial results, restart cursors, measurement failure and authorization failure
+using local fixtures and a fake fetch. It makes no network requests.
+The cache namespace changes to rules `c6896f2` for the new Hunt strategy and
+instrument-pair estimates; confirmed instruments remain saved separately.

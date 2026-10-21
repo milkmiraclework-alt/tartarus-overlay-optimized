@@ -239,8 +239,13 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     const target = targets.find((t) => t.url.endsWith('/analyze.html'));
     const page = await connect(target.webSocketDebuggerUrl); sockets.push(page.ws);
     const evaluate = page.evaluate;
-    for (let i = 0; i < 100 && !await evaluate('!!window.__tartarusFastRuntime'); i++) await pause(50);
-    assert.deepEqual(await evaluate('({fast:TartarusDesktop.fast,runtime:!!window.__tartarusFastRuntime,hidden:TartarusAnalyzer.desktopSnapshot().background})'), { fast: true, runtime: true, hidden: true });
+    // A cold isolated renderer can exceed the old five-second startup wait.
+    // Keep initialization bounded and include dependency state on a slow start.
+    for (let i = 0; i < 600 && !await evaluate('!!window.__tartarusFastRuntime'); i++) {
+      if (i === 100) console.log('WAIT: cold renderer startup: ' + JSON.stringify(await evaluate('({ready:document.readyState,auto:!!window.TartarusAuto,capture:!!window.TartarusCapture,analyzer:!!window.TartarusAnalyzer})')));
+      await pause(50);
+    }
+    assert.deepEqual(await evaluate('({fast:TartarusDesktop.fast,runtime:!!window.__tartarusFastRuntime,hidden:TartarusAnalyzer.desktopSnapshot().background})'), { fast: true, runtime: true, hidden: true }, output);
     console.log('PASS: local source runtime, native dependencies and a single hidden backend.');
     if (process.argv.includes('--contracts-only')) {
       const overlayTarget = targets.find(t => t.url.endsWith('/overlay.html'));
