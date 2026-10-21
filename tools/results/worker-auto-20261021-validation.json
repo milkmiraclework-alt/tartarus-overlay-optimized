@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-21",
+  "build": "0.2.19-local.22",
+  "upstream": {
+    "commit": "c6896f2e8d42cc858c93c38ab97ab164ca41b7b2",
+    "release": "0.2.19"
+  },
+  "sourceHashFormat": "SHA256 of UTF-8 source after CRLF-to-LF normalization.",
+  "sourceSha256": {
+    "js/analyze.js": "7d89e51379dee1d582bcca4ea1ab5aba826e4e7e799285f84a8394e919be3e96",
+    "analyze.html": "54af7627f40c305d2ca513645899274b56783af5207cf4bfbc6478ad2a27c9bf",
+    "tools/worker-budget-check.js": "6ec3084a206a8bbecca63cff7c8466ff35ee88c754296b5ad551b2748bb50e8e",
+    "tools/overlay-check.js": "92bdc170bb9d5f3fb7ea4eec16854e63374760116e98bd4283df7419b8013c6a"
+  },
+  "policy": {
+    "source": "navigator.hardwareConcurrency",
+    "reservedLogicalThreads": 1,
+    "minWorkers": 1,
+    "maxWorkers": 16,
+    "invalidOrUnknownFallbackWorkers": 1,
+    "selection": "Once per analyzer page; active jobs retain their pool and all samples.",
+    "matrix": [
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        4,
+        3
+      ],
+      [
+        8,
+        7
+      ],
+      [
+        12,
+        11
+      ],
+      [
+        16,
+        15
+      ],
+      [
+        24,
+        16
+      ],
+      [
+        32,
+        16
+      ],
+      [
+        64,
+        16
+      ],
+      [
+        128,
+        16
+      ]
+    ],
+    "optimalPerformanceForEveryCpuClaimed": false
+  },
+  "checks": {
+    "reportedCpuVariantsUseActualAnalyzerPoolCode": true,
+    "invalidAndUnknownCpuCases": true,
+    "lazyCreation": true,
+    "existingPoolReused": true,
+    "quotasPreserved": [
+      400,
+      1600
+    ],
+    "realElectron": {
+      "autoSizedPool": true,
+      "modeEntryExitCleanup": true,
+      "completeMonteCarloBudget": true,
+      "persistentCacheAcrossReloadAndRestart": true,
+      "rollingForecastsAndExactPartialPromotion": true
+    },
+    "solverAndRuleHashesMatchLocal21": true
+  },
+  "cache": {
+    "namespace": "mc-v2:rules=c6896f2:?v=20261021perf21:budget=9600",
+    "compatibleWithLocal21": true
+  },
+  "performance": "No new cross-CPU speed, FPS or profit-per-hour benchmark is claimed."
+}

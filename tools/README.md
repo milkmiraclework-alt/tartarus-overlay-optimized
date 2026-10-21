@@ -1154,3 +1154,29 @@ partial results, restart cursors, measurement failure and authorization failure
 using local fixtures and a fake fetch. It makes no network requests.
 The cache namespace changes to rules `c6896f2` for the new Hunt strategy and
 instrument-pair estimates; confirmed instruments remain saved separately.
+
+## Local.22 automatic solver pool
+
+The solver reads `navigator.hardwareConcurrency` on each machine, reserves
+one logical thread and uses at most 16 workers. Unknown/invalid values fall
+back to one worker. The pool stays fixed during a job; its shares still sum
+to the complete rollout target. This is a bounded default, not a claim that
+16 workers is optimal for every processor. The calculation cache namespace
+remains compatible with local.21.
+
+`node tools/worker-budget-check.js` loads the actual analyzer in isolated VM
+contexts for missing/invalid CPU data and 1–128 logical CPUs. It checks lazy
+pool creation, reuse and complete 400/1600-round quotas. The Electron overlay
+check verifies the detected limit against workers created on mode entry and
+continues to check full-budget advice, forecasts and cleanup.
+
+## Publishing the prepared fork
+
+From this working copy, run `Publish-Fork.cmd`. Its PowerShell helper uses
+GitHub CLI (from PATH or the local portable copy), asks you to sign in through
+the browser if needed, creates your `tartarus-overlay-optimized` fork, pushes
+the prepared `optimized-overlay` branch and sets it as the default branch.
+The final line gives the verified repository URL. It publishes the prepared
+source branch, which excludes local profiles, screenshots and runtime files.
+`Publish-Fork.cmd -CheckOnly` checks the prepared branch without signing in or
+making a network request.

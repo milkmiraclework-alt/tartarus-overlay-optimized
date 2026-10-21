@@ -341,7 +341,10 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     fs.appendFileSync(log, '[2026.10.17-01.00.00:100] TLLua: S16BoardMain Run\n');
     for (let i = 0; i < 200 && !await evaluate('TartarusCapture.state.window === "on"'); i++) await pause(25);
     assert.equal(await evaluate('TartarusCapture.state.window'), 'on', output + JSON.stringify(await evaluate('TartarusDesktop.game()')) + JSON.stringify(targets.filter(t=>t.url.endsWith('/game.html')).map(t=>({title:t.title,url:t.url}))));
-    assert.equal(await evaluate('window.solverWarmCount'),await evaluate('Math.max(1,navigator.hardwareConcurrency-1)'),'Solver workers were not prepared on entry before the first picture');
+    const workerInfo = await evaluate('TartarusAnalyzer.workerInfo()');
+    assert.equal(workerInfo.limit, await evaluate('Math.max(1,Math.min(16,navigator.hardwareConcurrency-1))'));
+    assert.equal(await evaluate('window.solverWarmCount'), workerInfo.limit, 'Auto-sized solver workers were not prepared on entry before the first picture');
+    assert.equal(workerInfo.allocated, workerInfo.limit);
     console.log('PASS: capture and warm workers start on board entry; enabling log detection alone stays idle.');
     await evaluate('TartarusAnalyzer.readTreasure=async()=>({ok:false});TartarusCapture.captureNow("board")');
     for (let i = 0; i < 200 && !await evaluate('!!TartarusAnalyzer.desktopSnapshot().lastRead'); i++) await pause(25);

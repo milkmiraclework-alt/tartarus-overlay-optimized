@@ -2,13 +2,18 @@
 
 Форк [Tartarus Simulator / CoffeeBns](https://github.com/blahdot3h/tartarus-simulator)
 для быстрого получения подсказок в оверлее Torchlight: Infinite.
-Версия: **0.2.19-local.21**, правила и распознавание синхронизированы с
+Версия: **0.2.19-local.22**, правила и распознавание синхронизированы с
 [исходником автора `c6896f2`](https://github.com/blahdot3h/tartarus-simulator/tree/c6896f2e8d42cc858c93c38ab97ab164ca41b7b2).
 
 ## Что оптимизировано
 
 - **Локальный оверлей.** Один фоновый обработчик анализа; настройки и исправление
   доски открываются по запросу. Запуск не требует открытого браузера.
+- **Потоки под процессор.** Число рабочих потоков симуляции выбирается автоматически:
+  доступные логические потоки минус один, от 1 до 16. Например, 4 → 3, 8 → 7,
+  12 → 11, 24 → 16. Ограничение сдерживает число воркеров на многоядерных ПК;
+  объём Монте-Карло сохраняется. Это правило распределения ресурсов, а не
+  замер оптимального числа потоков для каждого процессора.
 - **Передача кадров.** Картинка передаётся напрямую в распознавание через
   `ImageBitmap`. Промежуточные PNG и пересылка полноразмерных кадров между
   страницами убраны из этого пути. Неактуальные кадры и задания отменяются;
@@ -81,6 +86,7 @@ Node.js 22.16.0 и Electron 44.5.1 / Node.js 24.21.0. Числа ниже — м
 [0.2.19](tools/results/upstream-0.2.19-validation.json),
 [патчи от 20 октября](tools/results/upstream-20261020-validation.json),
 [патчи от 21 октября](tools/results/upstream-20261021-validation.json).
+Проверка [автоматического выбора потоков](tools/results/worker-auto-20261021-validation.json).
 
 ## Запуск оптимизированного режима
 
@@ -110,6 +116,7 @@ node tools/scan-parallel-check.js --frames FRAMES --bench
 node tools/overlay-check.js --solver-baseline BASELINE/js
 node tools/overlay-check.js --forecast
 node tools/calculation-check.js
+node tools/worker-budget-check.js
 node tools/overlay-check.js --instruments-only
 node tools/overlay-check.js --contracts-only
 node tools/upstream-check.js

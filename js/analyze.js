@@ -663,10 +663,15 @@
     forecast.ready.delete(solver.cacheKey);
     queueForecast();
   }
-  // The live check runs on a worker for every core but one, each playing its
-  // share of the rounds with its own dice. It runs for a few seconds after
-  // each board, then they all wait.
-  const WORKERS = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
+  // Pick once per page from the processor Chromium reports. Reserve one
+  // logical thread, and bound startup/memory overhead on many-core machines.
+  // A running job keeps its pool and every sample; only the split changes
+  // between different machines, never the full Monte Carlo budget.
+  function solverWorkerCount(logical = navigator.hardwareConcurrency) {
+    const available = Number.isFinite(logical) && logical >= 1 ? Math.floor(logical) : 2;
+    return Math.max(1, Math.min(16, available - 1));
+  }
+  const WORKERS = solverWorkerCount();
 
   // fresh: a new run's instrument offer (usePick). The last run's board is
   // done with, and this one, not seen yet, isn't shared: the next board
@@ -3763,6 +3768,7 @@
       onDesktopChange: (fn) => { desktopListeners.add(fn); return () => desktopListeners.delete(fn); },
       cacheInfo: () => solverCache ? solverCache.info() : null,
       calculationInfo: () => ({ id: solver.id, starts: solver.starts, resumed: solver.resumed, rounds: solver.result?.rounds || 0, target: solver.target || 0 }),
+      workerInfo: () => ({ limit: WORKERS, allocated: solver.workers ? solver.workers.length : 0 }),
       forecastInfo,
       setForecastEnabled: (enabled) => { forecastEnabled = !!enabled; if (!forecastEnabled) stopForecast(); },
       // The log watcher stays alive outside the board. Everything expensive
@@ -3827,8 +3833,6 @@
       // What the reader made of the last picture, in full (the desktop app's
       // test record keeps it).
       readingSummary: () => (reader.result && reader.image ? readingSummary(true) : ''),
-      // The live check's workers: how many it may use (setCores, 0 for every
-      // core but one) and how many are running now (0 once let go).
       day: () => model.day,
       toast,
     };
