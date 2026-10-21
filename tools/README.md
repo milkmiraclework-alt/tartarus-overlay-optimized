@@ -1180,3 +1180,9 @@ The final line gives the verified repository URL. It publishes the prepared
 source branch, which excludes local profiles, screenshots and runtime files.
 `Publish-Fork.cmd -CheckOnly` checks the prepared branch without signing in or
 making a network request.
+
+`node tools/publish-fork-check.js` runs the actual PowerShell helper with fake
+GitHub/Git commands: new/existing forks, wrong parent, API lookup failure,
+fork denial and push failure. It rejects the invalid explicit-repository
+`--remote` flag and verifies that the original GitHub failure is reported.
+The checks create no remote repository and perform no real push.
