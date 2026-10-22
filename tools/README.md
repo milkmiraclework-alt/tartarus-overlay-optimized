@@ -1186,3 +1186,13 @@ GitHub/Git commands: new/existing forks, wrong parent, API lookup failure,
 fork denial and push failure. It rejects the invalid explicit-repository
 `--remote` flag and verifies that the original GitHub failure is reported.
 The checks create no remote repository and perform no real push.
+
+## Local.23 strategy notes (2026-10-22)
+
+The author's instrument/pair/contract notes appear in the analyzer window.
+The hidden backend skips notes entirely; visible notes reuse their DOM until
+the held instruments or start card changes. Rules, solver, reader, automatic
+worker allocation and the local.22 result-cache namespace are retained.
+`node tools/tips-check.js` checks note composition and hidden/unchanged render
+cost. `node tools/overlay-check.js --contracts-only` also checks the real notes
+panel, its instrument-pair text, contract changes and DOM reuse.

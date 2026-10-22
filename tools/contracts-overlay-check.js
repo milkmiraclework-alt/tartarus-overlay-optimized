@@ -24,5 +24,18 @@ module.exports = function checkInstrumentDialog() {
   $('az-tools-open').click(); $('az-tools-ok').click();
   check(!dialog.open && !TartarusAnalyzer.desktopSnapshot().toolsConfirm, 'These are right did not close and confirm');
   for (const id of ['az-tools', 'az-tools-confirm', 'az-tools-ok']) check(document.querySelectorAll('#' + id).length === 1, 'Duplicated instrument control: ' + id);
-  return { search: true, enter: true, escape: true, done: true, confirmation: true, controlsRetained: true };
+  const start = $('az-start-event');
+  for (const id of ['maiden', 'scapegoat']) {
+    const b = tools.querySelector(`[data-tool="${id}"]`);
+    if (b.getAttribute('aria-pressed') !== 'true') b.click();
+  }
+  start.value = 'ironlaw'; start.dispatchEvent(new Event('change'));
+  const notes = $('az-play-notes-list');
+  check(!$('az-play-notes').hidden && notes.textContent.includes('Iron Law') && notes.textContent.includes('before the Scapegoat'), 'Instrument pair/contract notes were not rendered');
+  const first = notes.firstElementChild;
+  start.dispatchEvent(new Event('change'));
+  check(notes.firstElementChild === first, 'Unchanged notes were rebuilt');
+  start.value = 'cagefight'; start.dispatchEvent(new Event('change'));
+  check(notes.textContent.includes('Cage Fight') && !notes.textContent.includes('Iron Law'), 'Changing the contract left stale notes');
+  return { search: true, enter: true, escape: true, done: true, confirmation: true, controlsRetained: true, strategyNotes: true, notesDomReused: true };
 };

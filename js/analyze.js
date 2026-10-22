@@ -30,6 +30,26 @@
   const $ = (id) => document.getElementById(id);
   const L = (n) => T.cellLabel(n);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+  // Short notes on playing the run's instruments, the pairs among them the
+  // lab found worth more or less together, and its start card (js/tips.js;
+  // the user, 2026-10-22).
+  let playNotesKey = '';
+  function renderPlayNotes() {
+    if (desktopHidden()) return;
+    const box = document.getElementById('az-play-notes');
+    const tips = window.TartarusTips;
+    if (!box || !tips) return;
+    const key = JSON.stringify([model.tools, model.startEvent]);
+    if (playNotesKey === key) return;
+    const names = {};
+    for (const id of T.TOOL_IDS) names[id] = T.toolName(id).split(':')[0];
+    for (const id of Object.keys(T.START_EVENTS || {})) names[id] = T.START_EVENTS[id].name;
+    const notes = tips.notesFor(model.tools || [], model.startEvent, names);
+    box.hidden = !notes.length;
+    document.getElementById('az-play-notes-list').innerHTML = notes.map((n) => `<li class="az-play-note az-play-${n.kind}"><b>${esc(n.title)}.</b> ${esc(n.text)}</li>`).join('');
+    playNotesKey = key;
+  }
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const toInt = (v, fallback) => {
     const n = Math.round(Number(v));
@@ -1349,6 +1369,7 @@
     $('az-start-event').value = card ? model.startEvent : 'none';
     $('az-start-text').hidden = !card;
     $('az-start-text').textContent = card ? `${card.text}.` : '';
+    renderPlayNotes();
     const goalNeed = T.OBJECTIVES[goal].need || 0;
     $('az-walk-wrap').hidden = !goalNeed;
     $('az-walk-unit').textContent = T.OBJECTIVES[goal].unit || 'Progress';

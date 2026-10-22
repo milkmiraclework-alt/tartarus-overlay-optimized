@@ -2,8 +2,8 @@
 
 Форк [Tartarus Simulator / CoffeeBns](https://github.com/blahdot3h/tartarus-simulator)
 для быстрого получения подсказок в оверлее Torchlight: Infinite.
-Версия: **0.2.19-local.22**, правила и распознавание синхронизированы с
-[исходником автора `c6896f2`](https://github.com/blahdot3h/tartarus-simulator/tree/c6896f2e8d42cc858c93c38ab97ab164ca41b7b2).
+Версия: **0.2.19-local.23**, правила и распознавание синхронизированы с
+[исходником автора `3f937ec`](https://github.com/blahdot3h/tartarus-simulator/tree/3f937ec894094c24b37f2701dbe4b6ff4f480cce).
 
 ## Что оптимизировано
 
@@ -87,6 +87,7 @@ Node.js 22.16.0 и Electron 44.5.1 / Node.js 24.21.0. Числа ниже — м
 [патчи от 20 октября](tools/results/upstream-20261020-validation.json),
 [патчи от 21 октября](tools/results/upstream-20261021-validation.json).
 Проверка [автоматического выбора потоков](tools/results/worker-auto-20261021-validation.json).
+Проверка [памяток от 22 октября](tools/results/upstream-20261022-validation.json).
 
 ## Запуск оптимизированного режима
 
