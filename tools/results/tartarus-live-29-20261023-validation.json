@@ -1,0 +1,18 @@
+{
+  "version": "0.2.20-local.29",
+  "measuredAt": "2026-10-23T08:25:45.756Z",
+  "read": {
+    "n": 32,
+    "minMs": 216,
+    "medianMs": 357,
+    "maxMs": 3321
+  },
+  "waitFromLastBoardTrigger": {
+    "n": 32,
+    "minMs": 631,
+    "medianMs": 1508,
+    "maxMs": 2525
+  },
+  "workerImportErrors": 0,
+  "limitations": "Observed user log timings on different boards; no controlled before/after speedup or FPS/profit measurement. No screenshots or personal paths included."
+}
