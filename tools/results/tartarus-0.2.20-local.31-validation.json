@@ -1,0 +1,235 @@
+{
+  "version": "0.2.20-local.31",
+  "checkedAt": "2026-10-23T09:22:05.345Z",
+  "upstream": "308b9479bcd0857a581a7e7b7917d0a8e0c5062e",
+  "objective": "Expected Rainbow in the vault, capped at 10",
+  "changes": [
+    "Final-day continuation keeps pending gift combinations and waiting office/event decisions alive.",
+    "With only one gift, all doors open, no further daily action and an available meal, Horn weakly dominates the other three gifts; random three-trial failure no longer selects a zero-value gift.",
+    "Explicit giftRank remains respected. JS and Rust implement the same guards. No extra simulation budget or reader change.",
+    "Solver cache revision rust31 separates old continuation estimates from the corrected strategy. Instrument confirmations and capture settings are preserved."
+  ],
+  "targeted": {
+    "checkedAt": "2026-10-23T09:10:48.693Z",
+    "version": "0.2.20-local.31",
+    "singleGiftChoices": {
+      "before": {
+        "horn": 568,
+        "ring": 432
+      },
+      "corrected": {
+        "horn": 1000
+      }
+    },
+    "queuedGiftChoices": {
+      "before": {
+        "ring": 4000
+      },
+      "corrected": {
+        "wine": 4000
+      }
+    },
+    "queuedGiftFinalRainbows": {
+      "before": {
+        "n": 4000,
+        "mean": 0
+      },
+      "corrected": {
+        "n": 4000,
+        "mean": 0.23925
+      }
+    },
+    "exactSingleGiftExpectation": {
+      "horn": 0.25,
+      "otherGifts": 0
+    },
+    "jsRustDecisions": 2424,
+    "guardFamilies": 7,
+    "limitations": "Constructed terminal positions; these frequencies are not the frequency of bad live advice. Full root Monte Carlo already selected Horn in the single-gift fixture.",
+    "gameInput": false
+  },
+  "wholeGames": {
+    "quality": "tools/results/tartarus-strategy-31-20261023-quality.json",
+    "production": "tools/results/tartarus-strategy-31-production-20261023-quality.json",
+    "policyGamesPerVariant": 6528,
+    "adviserGamesPerVariant": 30,
+    "adviserDecisions": 7685
+  },
+  "timing": "tools/results/tartarus-strategy-31-20261023-bench.json",
+  "engine": {
+    "native": {
+      "checkedAt": "2026-10-23T09:11:32.697Z",
+      "runs": 264,
+      "moves": 18454,
+      "alternativeActions": 136,
+      "monteCarloPositions": 43,
+      "analyzerCardStates": 24,
+      "elapsedMs": 18335,
+      "reference": "js",
+      "binary": "native\\tartarus\\target\\release\\tartarus-core.exe",
+      "gameInput": false
+    },
+    "wasm": {
+      "checkedAt": "2026-10-23T09:11:53.447Z",
+      "runs": 264,
+      "moves": 18454,
+      "alternativeActions": 136,
+      "monteCarloPositions": 43,
+      "analyzerCardStates": 24,
+      "elapsedMs": 20484,
+      "reference": "js",
+      "binary": "js/solver-core.wasm",
+      "gameInput": false
+    }
+  },
+  "checks": [
+    "parity-native",
+    "parity-wasm",
+    "strategy28",
+    "cache",
+    "workers",
+    "instruments",
+    "forecast",
+    "forecast-menu",
+    "solver-cache",
+    "chain-cache",
+    "worker-budget",
+    "desktop-settings",
+    "upstream-rules",
+    "readiness",
+    "recovery",
+    "lifecycle"
+  ],
+  "packagedChecks": [
+    "Full overlay with saved frames, stability/epoch guards, complete 1600 budget and persistent A/B/A/restart cache",
+    "Rolling two-step forecast and resumed full samples; zero workers after exit",
+    "Import cancellation, active-reader failure and stale errors recover accelerated reading and the solver pool",
+    "Physical These are right across progress, 10 conflicting/missing/growing frames and reload",
+    "Actual Portable EXE with offline OCR/native/Rust parity, blocked external HTTP, missing original runtime and occupied port",
+    "Standalone manifest verifies all packaged sources, 41 assets, native libraries and artifact hashes"
+  ],
+  "invariants": {
+    "solverCacheRevision": "20261023rust31",
+    "extraRollouts": 0,
+    "readerChanges": false,
+    "productionSwitchRule": "max(1.96 paired SE, 0.05 Rainbow)",
+    "giftAdaptive": false
+  },
+  "standalone": {
+    "version": "0.2.20-local.31",
+    "architecture": "x64",
+    "builtAt": "2026-10-23T09:17:50.247Z",
+    "electron": "44.5.1",
+    "appAsarSha256": "add22b5a41f963b70c6fe52f1bf265fade27b84d53c0cf85e8f90bbee2e10b4a",
+    "wasmSha256": "f9b72eb2e40b546a332f37c12ad367ea6d7c25679fc33c42025253548dcded06",
+    "solverWasmSha256": "87a45900c2995f0af04e4b990fddfe825ad1456018a9069be3e0e1328d34ce35",
+    "sourceSha256": {
+      "desktop/main.js": "659ddf26b1be41b4b4295396afa87dfc80e9c601d72fb4ff13f198dc4ca34cfd",
+      "desktop/preload.js": "1d7de59c66de3e78bef7813cec75322183f0799bb143233ba68cc977b508c110",
+      "desktop/package.json": "436952a2841dace986217b6679170658cc956b4b4f1675294355e1de622aa69d",
+      "desktop/package-lock.json": "37569bf9f445842b737366e0ff31341cdce06da79c1ffa547ccc648a336884b2",
+      "desktop/build/icon.png": "4bc2d8479674fb953ac80c7dbaeedae950924969a77f0aae8b73158a93e2ae7a",
+      "analyze.html": "54a217bd09684063471c69df1f739ca6b22b450f6f2874570097c06d667d2329",
+      "css/style.css": "a9d4c875ff3820c023025a2ea936bb0eb40b183c942842a8ebb243263da0c7de",
+      "tools/stage-overlay.js": "72020adce3624423d5c1b439d5e16d034b398d5ee09c7eafdd12bbb1d0ee4d43",
+      "js/engine.js": "486587394fcc83ee3c9ee0de4bdb1324791ee71bdeb939743edfda53e8689741",
+      "js/solver.js": "1344a03b4179fba4f5cd336b2220f29b88ba6215c8e390d298f17266f81150ba",
+      "js/tool-combos.js": "c05afd184cefdceb9999352502a02cd63fd5897aae2ed1131b5d3cb10e658771",
+      "native/tartarus/Cargo.toml": "78328f87c65db0adf19dee4c00471bcb8f50f59e46a9191d8e2aee419e7fde1d",
+      "native/tartarus/Cargo.lock": "98f00b3be01db517b4fdad5f643913cd3316430fa8a90218c0606bf1b34fb2aa",
+      "native/tartarus/data/policy.json": "aeddb8fe9bd6ba57f9649df63a80a21460d4fa7dcd036e6e2cf6ab987a482992",
+      "native/tartarus/src/api.rs": "ae79de4c49ac9fa6d628de742de56a9166406e44cc381a31d2e6393d7979b2b6",
+      "native/tartarus/src/engine.rs": "b270c423f4a5ef0b9b1289df09171e34a6bce97ee76f5f851217aed120d87e80",
+      "native/tartarus/src/job.rs": "e0115deabf1d03ceb448da851b3abd98b981c6c1f5f82e5e95a8ec13b35dce33",
+      "native/tartarus/src/lib.rs": "22ae39369cead5518f96861dcf8ee34c00cc9c29847d600da07af6d5d91b53da",
+      "native/tartarus/src/main.rs": "17a68181589ad9ce217aa3da5ed32f6fc7a27d00c09d0aef7d0d0107488f2ffb",
+      "native/tartarus/src/model.rs": "5108711b2e0186047dd0ca6d55188f2004fded5d46325cb0bc4be42347126228",
+      "native/tartarus/src/policy.rs": "be54fb7037299de23b07ce637d6c843edef8b965021f7dab24aad177bab741de",
+      "js/solver-core.build.json": "a334025e36013e445f78ed50918cbfd1b5bd8a9b2cd4d7122442c3ec6751a03f",
+      "js/analyze.js": "bd1b2e255368534c9dd8dfaa80c27f8516cb935e83b9900211ef2d3266da5654",
+      "js/auto.js": "8a8bcc0a4cab3ed0ca98fdd5f7882495f360ac73ae7b9badbf5fcba8916bf15c",
+      "js/board.js": "74fa962c7bfa0550ffcbbfaa52fc125592bb179752a3b0f1e0ade74bc527786a",
+      "js/canvas-engine.js": "6a4ce3978d811aa2e364b2e64f0547acc87c7a3504484be52cf17e5082483c2b",
+      "js/canvas-solver.js": "afc80e97ed4e3f07bfb4a7370b61a2e29326bb3de85ad23b383d02a844645573",
+      "js/canvas-ui.js": "38713d6d267af67c3bbb59f7fadd654f9182cc629f537f14487d65f5e79a9a71",
+      "js/capture.js": "27aa10ea433f611cdbb031f0726ccca983432d19912ca8cc8c33908dffa721ee",
+      "js/follow.js": "f616d1c88ca410179f9adffdc0fce1d82c9b0533dc469e3e3933bc0b18a412cd",
+      "js/frame-readiness.js": "22141c33d79f80c71dfdc6bfc5728eb86fa9815bf5acdc54782751f3b13f463a",
+      "js/guide-data.js": "687dbf3eb27d52429811bd18cbce622fabb084cca6b5936a889340e016770dd5",
+      "js/live.js": "4c1078fc09ac98f6cf962bb55d8efe3a907efb581ad5f98234c8e6632d087397",
+      "js/pick-data.js": "110dd77fd3dae81bfb70792a03b61fefb567c4dfb0407855805cf0ecc3334ef3",
+      "js/ready-worker.js": "044b4d2d8e9ae5b357c70d84628794f87730bef25aa402c9f07ea488d02275ae",
+      "js/report.js": "af653767ec2df4a683e3fff0c4970f0358200a4fa2d84d2d177911a3aa8feeaa",
+      "js/rust-solver.js": "2e0374a4874f5b2497194fb8c9032ed91fe4dc8cda667fd47cb29a0540d8e997",
+      "js/scan-accelerator.js": "30d272257cd6a2146eb13a7b44d625726fd316e207bcf9ee3e8c807ef2207155",
+      "js/scan-data.js": "f57960d9b2625c1ea6adcebe378b90598ce7fdc2af26c856bf03394884db6e22",
+      "js/scan-kernels.wasm": "f9b72eb2e40b546a332f37c12ad367ea6d7c25679fc33c42025253548dcded06",
+      "js/scan-search-worker.js": "0fb7ef41780bf2c47888a47b39635b88b17174e82acefc1aa9c3ac77075e3996",
+      "js/scan-tracker.js": "826100947b79dcbdbebe85f1909e316bb49beaaf2507bb62cf8a13cec7405b62",
+      "js/scan-worker.js": "584855e52d3d9323e18bb13510a22a168074e2bb35f62ff4ebd5dcdc30516622",
+      "js/scan.js": "d6f07391e00f6dfed7cba91007c4f91fb88d1f01c90b8252d1cc497d958e67d0",
+      "js/solver-cache.js": "509bf87c003abdb05676e786f7ec3ce2a224dddca3059f54154923d0309fb021",
+      "js/solver-core.wasm": "87a45900c2995f0af04e4b990fddfe825ad1456018a9069be3e0e1328d34ce35",
+      "js/solver-forecast.js": "5be68fc839f0db736789fe800d8de77e1a3a32884fa821f90cac05dd1c904c93",
+      "js/solver-worker.js": "807772aa60d42f13096236081ef6f4e13d717253c3b31409fe33d7ebb7c8709b",
+      "js/sound.js": "e23a0472d9408eb7356eb5c2ad2e0083a0b46927cb6f1f59ddaf0db55bc34e0d",
+      "js/tips.js": "c6723f20404b398851a62442beb10fdd9a4d813cf316fb709583e26c197f3c0d",
+      "js/ui.js": "d77a2cdd2d6f52f33e70b2de604f3eb88b543540973f75886d19c24f7dfef94a",
+      "js/update.js": "fc4f7677ab7eba9b58bbe7d31ab72fd3ff29ed33aadf538292a466dcfaed585f",
+      "img/enable-log.webp": "11fdbb47d347d646da535b161fa7fed558b1e398d78ae65b27392809b703f960",
+      "desktop/lib/analyzer-adapter.js": "d50e2a9dfdd9f6836b0aa758d6af6fc5cb69f496790ac026f1610bf34bc35255",
+      "desktop/lib/bundled-site.js": "99b4be3185cc0d157180414092e6e2a1cb0df674e9a015ac99cbb55f3d6ae280",
+      "desktop/lib/fast-runtime.js": "975644858a57795f3b9708343270f2702cd54827c213df85fb113bd0b8cad0b6",
+      "desktop/lib/follow-adapter.js": "80a1e8485861dac8614bb5f22bae714206d625eefcc0e6f3359531981627e053",
+      "desktop/lib/log-watch.js": "d6d712a6250506fd7aa0c9b19cc117b4a0ec240a158a82f63f9b06514ac60325",
+      "desktop/lib/overlay-preload.js": "d25a5166c075522a7d2febe8c51409895dce3591165978b7fb21f41182b5f52e",
+      "desktop/lib/overlay.html": "f200854a3929d48048fa591f7c2d5cbf37e7095dd2e8a8547c718b2608cdca77",
+      "desktop/lib/overlay.js": "f1594390fc7eaed5a4a57d0605ae94f0da579bba2cd4f2da460c7723cf65753a",
+      "desktop/lib/review-preload.js": "646aca09b3e3674d55956414b263c719bd479911054dc80a0694fcbe6a642a99",
+      "desktop/lib/review.html": "e5cc6a7f46f3291621ccd90456867f2cdbbae84da0df51a87e421d0b599fe571",
+      "desktop/lib/review.js": "a2b34ecd65ab2d0041d50b7fffcf79890cdd45c9c71ec75b97f71479cfb2670b",
+      "desktop/lib/settings.html": "88d239b607b51664c979780a049d857bf4ca499e8d8bc4b537c2a839474ed43f",
+      "desktop/lib/settings.js": "3fc42e3f1c03ceaaa76517ab5be13c6d6e7b949a94c39339ec365af48c3b74d0",
+      "desktop/lib/upstream-updates.js": "ddfbceca5ca71bc7ddb34459556daeb852600393f74ccc5cda77d5910a30d0ef",
+      "desktop/lib/upstream-version.json": "22a259111d9232ec3a7486e5617e4153b8e97944d7ed28a2cc5edb8661375242"
+    },
+    "assets": 41,
+    "artifacts": [
+      {
+        "file": "Tartarus-Optimized-Portable-0.2.20-local.31-x64.exe",
+        "bytes": 127607133,
+        "sha256": "84a6f0f06ec7a8996e40d1ba1eb9ed6a6c7d6aea2d33af2e510e7867759f54e1"
+      },
+      {
+        "file": "Tartarus-Optimized-Setup-0.2.20-local.31-x64.exe",
+        "bytes": 127772460,
+        "sha256": "555575a453992a97479008aa8ac0d00a54bba4013f54aab38d069b6f87825718"
+      }
+    ]
+  },
+  "portableSmoke": {
+    "version": "0.2.20-local.31",
+    "executable": "Tartarus-Optimized-Portable-0.2.20-local.31-x64.exe",
+    "sha256": "84a6f0f06ec7a8996e40d1ba1eb9ed6a6c7d6aea2d33af2e510e7867759f54e1",
+    "checkedAt": "2026-10-23T09:16:03.986Z",
+    "bootMs": 10573,
+    "text": "TARTARUS 12345",
+    "ocrMs": 925,
+    "agreed": false,
+    "rustSampleParity": true,
+    "rustRollouts": 8,
+    "externalHttpBlocked": true,
+    "originalInstallUnavailable": true,
+    "occupiedPortIndependent": true,
+    "gameInput": false
+  },
+  "limitations": [
+    "The constructed gift scenarios establish a specific policy correction, not a universal whole-game Rainbow or profit/hour gain.",
+    "Independent whole-adviser comparisons retain explicit budgets; 64 is below normal production, 400 is the lower production budget.",
+    "Paired-only and highest-mean switch variants remain offline experiments; production recommendation confidence is unchanged.",
+    "The continuation policy remains heuristic; exhaustive optimal planning is not claimed.",
+    "Single-thread synthetic timings do not measure live capture, animation latency or game FPS."
+  ],
+  "gameCapture": false,
+  "gameInput": false
+}

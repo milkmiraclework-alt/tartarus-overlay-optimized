@@ -48,6 +48,8 @@ pub struct Policy {
     pub prey_survival: bool,
     #[serde(default)]
     pub gift_adaptive: bool,
+    #[serde(default)]
+    pub terminal_gifts: bool,
     /// Differential quality audit only; normal jobs use corrected chain math.
     #[serde(default)]
     pub legacy_wolf_chains: bool,
@@ -1195,7 +1197,17 @@ fn pick_gift(st: &State, ctx: &Context, options: &[Id], rng: &mut u32) -> Id {
         && !st.can_devour()
         && !st.can_swap()
         && !e::can_hunt(st);
-    if last {
+    let final_gift = st.phase == Phase::Manage && st.event.is_none() && st.pending.len() == 1;
+    if p.terminal_gifts
+        && last
+        && final_gift
+        && options.contains(&Horn)
+        && !st.cells.iter().any(|c| c.n != 0 && c.sealed)
+        && st.board().iter().any(|&n| !e::meals(st, n).is_empty())
+    {
+        return Horn;
+    }
+    if last && (!p.terminal_gifts || final_gift) {
         let mut best = None;
         for &id in options {
             let mut gain = 0;

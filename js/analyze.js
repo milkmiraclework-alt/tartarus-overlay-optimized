@@ -515,7 +515,7 @@
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
   // Bump for rule/strategy imports, retain across compatible UI-only fixes.
-  const SOLVER_CACHE_REVISION = '?v=20261023rust28';
+  const SOLVER_CACHE_REVISION = '?v=20261023rust31';
   const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=308b947:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),

@@ -2,10 +2,35 @@
 
 Форк [Tartarus Simulator / CoffeeBns](https://github.com/blahdot3h/tartarus-simulator)
 для быстрого получения подсказок в оверлее Torchlight: Infinite.
-Версия: **0.2.20-local.30**, правила синхронизированы с
+Версия: **0.2.20-local.31**, правила синхронизированы с
 [исходником автора `308b947`](https://github.com/blahdot3h/tartarus-simulator/tree/308b9479bcd0857a581a7e7b7917d0a8e0c5062e).
 
 ## Что оптимизировано
+
+В **local.31** исправлены два решения внутри будущих партий Monte Carlo:
+последний день больше не обрывает планирование оставшихся подарков, а Horn
+не отбрасывается после трёх неудачных проб, когда остальные подарки уже
+не могут принести Rainbow. Это сохраняет связку Wine → Horn. На контрольной
+позиции с двумя подарками средний итог вырос с 0 до **0,239 Rainbow** на
+4 000 проверочных исходах. Это проверка конкретной ошибки, не общий прирост
+по забегам. Дополнительных симуляций и изменений распознавания нет;
+старый кэш расчётов отделён от исправленной стратегии.
+[Контрольные позиции и совпадение JS/Rust](tools/results/tartarus-strategy-31-targeted-20261023.json).
+
+Независимое сравнение local.30/local.31: **6 528 полных партий внутренней
+политики на вариант** и **30 полных партий советника на вариант** (24 с бюджетом
+64, ещё 6 с обычным нижним бюджетом 400). Итог Rainbow у двух советников
+совпал во всех 30 партиях; общий прирост не установлен. Удаление порога 0,05
+и безусловный выбор максимальной средней оценки проверены отдельно и в
+релиз не включены: устойчивого преимущества не показали.
+[Основное сравнение](tools/results/tartarus-strategy-31-20261023-quality.json),
+[независимый набор с бюджетом 400](tools/results/tartarus-strategy-31-production-20261023-quality.json).
+
+На той же контрольной позиции с двумя подарками полный расчёт с бюджетом
+1 600 ускорился с **68 до 31 мс** (медианы семи повторов, Rust/WASM).
+На обычных позициях изменения времени небольшие и неоднородные;
+универсального ускорения всей программы эта правка не обещает.
+[Замеры с полным бюджетом](tools/results/tartarus-strategy-31-20261023-bench.json).
 
 В **local.30** ранняя готовность больше не требует остановки фонового дыма и
 свечения: при движущихся пикселях нужны три одинаковых уверенных чтения поля и
@@ -246,7 +271,7 @@ Windows x64. Скачайте готовую сборку из
 .\Build-Standalone.cmd
 ```
 
-Результат появится в `desktop/dist`. После сборки `.\Start-Local-Overlay.cmd`
+Результат появится в `desktop/dist/builds/0.2.20-local.31`. После сборки `.\Start-Local-Overlay.cmd`
 запускает готовый EXE. Проверки выполняются с изолированным профилем и тестовым
 окном, без управления реальной игрой. Подробности: [desktop/README.md](desktop/README.md).
 Проверки готового Portable и автономного OCR:
@@ -262,8 +287,8 @@ node tools/rust-solver-manifest.js
 node tools/rust-solver-check.js --wasm
 node tools/rust-worker-check.js
 node tools/solver-check.js
-node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --rust-bench
-node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --forecast-only
+node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe" --rust-bench
+node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe" --forecast-only
 node tools/calculation-check.js
 node tools/worker-budget-check.js
 node tools/overlay-check.js --instruments-only

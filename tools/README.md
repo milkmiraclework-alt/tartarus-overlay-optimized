@@ -1431,3 +1431,27 @@ now finish at 690ms instead of stacking 100ms after each one (890ms). Three
 observations/200ms, epoch changes, unavailable probes, cancellation and the
 original deadlines are retained. The local picture log includes settling mode,
 wait duration, probe count and reason even with screenshot recording disabled.
+
+## Terminal gift continuation and independent switch audit (local.31)
+
+`node tools/strategy-31-check.js` reproduces the final-day single-gift and
+Wine-to-Horn cases, checks deterministic dominance and explicit gift-rank
+overrides, compares JS/Rust choices and runs independent actual engine seeds.
+It covers event/office decisions, remaining daily actions, locked doors,
+additional gifts and unavailable Horn options. The baseline can be recovered
+from the published local.30 ancestor when the private snapshot is absent.
+
+`node tools/strategy-31-quality-check.js --games 1024 --mc-games 4 --rollouts 64`
+compares frozen local.30 with the correction across six tool/event sets. Every
+adviser game runs a complete solve at every decision. Two additional offline
+variants remove the 0.05 floor or choose the highest sample mean directly;
+production keeps the paired-SE/0.05 rule. Use `--prefix`, `--sets`, `--report`
+and `--reference` to select independent holdouts and baseline inputs. The
+separate `--games 128 --mc-games 2 --rollouts 400 --sets 0,2,3 --prefix
+STRATEGY31-HOLDOUT-B` comparison uses a production-sized lower budget.
+
+`node tools/strategy-31-bench.js` compares interleaved warm full 1600-rollout
+WASM solves on mid-run and terminal positions with the frozen local.30 core.
+Targeted gains, whole-game outcomes and timing comparisons are separate
+reports; none establishes a universal gain in live profit/hour. No live-game
+capture or input is used by these checks.

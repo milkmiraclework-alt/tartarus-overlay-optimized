@@ -66,6 +66,7 @@
     giftChain: true, // Opulence's chain first: Horn for a Rainbow, then Thumb Ring, then Vintage (pickGift)
     preySurvival: true, // value a Consume's actual chance to break either side of a Prey link
     giftAdaptive: false, // bounded paired gift trials, enabled only after independent quality checks
+    terminalGifts: true, // keep queued gift combinations alive on the last day
   };
 
   // Tuned weights for each kind of run: drills with tool rewards on or off.
@@ -955,7 +956,18 @@
     // After the last move, a gift that makes a Rainbow now still comes
     // first; otherwise the Thumb Ring (the user, 2026-10-17: "thumb ring is
     // more overall chests at the end").
-    if (lastMoveMade(st)) {
+    const terminal = lastMoveMade(st);
+    // Pending gifts and an office/event decision are still future actions.
+    // In particular, Wine can set up a later Horn on the very last day.
+    const finalGift = st.phase === 'manage' && !st.event && st.pending.length === 1;
+    if (P.terminalGifts && terminal && finalGift && options.includes('horn') &&
+        !st.cells.some(c => c.n !== T.OFFICE && c.sealed) &&
+        st.cells.some(c => !c.sealed && c.inmate && hasDevourOption(st, c.n))) {
+      // The other three gifts cannot add a Rainbow here. Horn weakly
+      // dominates them; three unlucky probes must not discard its chance.
+      return 'horn';
+    }
+    if (terminal && (!P.terminalGifts || finalGift)) {
       let best = null;
       for (const id of options) {
         let gain = 0;

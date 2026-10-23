@@ -1,0 +1,363 @@
+{
+  "checkedAt": "2026-10-23T09:20:47.563Z",
+  "version": "0.2.20-local.31",
+  "prefix": "STRATEGY31-HOLDOUT-B",
+  "baseline": "local.30 frozen WASM",
+  "variants": [
+    {
+      "name": "local30"
+    },
+    {
+      "name": "terminalGifts"
+    },
+    {
+      "name": "pairedOnly"
+    },
+    {
+      "name": "topMean"
+    }
+  ],
+  "selectedSets": [
+    0,
+    2,
+    3
+  ],
+  "productionTerminalGifts": true,
+  "equivalenceGames": 48,
+  "policyGamesPerVariant": 384,
+  "adviserGamesPerVariant": 6,
+  "adviserRolloutsPerAction": 400,
+  "adviserDecisions": 1443,
+  "elapsedMs": 475321,
+  "policy": [
+    {
+      "tools": [],
+      "startEvent": null,
+      "terminalGifts": {
+        "old": {
+          "n": 128,
+          "mean": 2.59375,
+          "ci95": 0.3015845415938066,
+          "capped": 0
+        },
+        "next": {
+          "n": 128,
+          "mean": 2.59375,
+          "ci95": 0.3015845415938066,
+          "capped": 0
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        263.3102999999997,
+        195.75920000000056
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "startEvent": "cagefight",
+      "terminalGifts": {
+        "old": {
+          "n": 128,
+          "mean": 9.8828125,
+          "ci95": 0.08863270900220131,
+          "capped": 119
+        },
+        "next": {
+          "n": 128,
+          "mean": 9.8828125,
+          "ci95": 0.08863270900220131,
+          "capped": 119
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        208.60790000000077,
+        199.50390000000016
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "startEvent": null,
+      "terminalGifts": {
+        "old": {
+          "n": 128,
+          "mean": 6.1796875,
+          "ci95": 0.3842758448302854,
+          "capped": 9
+        },
+        "next": {
+          "n": 128,
+          "mean": 6.1796875,
+          "ci95": 0.3842758448302854,
+          "capped": 9
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        210.32629999999926,
+        189.88929999999868
+      ]
+    }
+  ],
+  "adviser": [
+    {
+      "tools": [],
+      "terminalGifts": {
+        "old": {
+          "n": 2,
+          "mean": 3.5,
+          "ci95": 0.98,
+          "capped": 0
+        },
+        "next": {
+          "n": 2,
+          "mean": 3.5,
+          "ci95": 0.98,
+          "capped": 0
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "pairedOnly": {
+        "old": {
+          "n": 2,
+          "mean": 3.5,
+          "ci95": 0.98,
+          "capped": 0
+        },
+        "next": {
+          "n": 2,
+          "mean": 3.5,
+          "ci95": 0.98,
+          "capped": 0
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "topMean": {
+        "old": {
+          "n": 2,
+          "mean": 3.5,
+          "ci95": 0.98,
+          "capped": 0
+        },
+        "next": {
+          "n": 2,
+          "mean": 6.5,
+          "ci95": 6.859999999999999,
+          "capped": 1
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 3,
+          "ci95": 7.84,
+          "capped": 0
+        }
+      },
+      "moves": [
+        146,
+        146,
+        146,
+        134
+      ],
+      "elapsedMs": [
+        63531.96950000002,
+        66757.92390000002,
+        54735.59849999999,
+        48232.27259999998
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "terminalGifts": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "pairedOnly": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "topMean": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "moves": [
+        95,
+        95,
+        95,
+        121
+      ],
+      "elapsedMs": [
+        29016.915499999945,
+        27752.383500000025,
+        31925.306100000045,
+        27823.404500000004
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "terminalGifts": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "pairedOnly": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "topMean": {
+        "old": {
+          "n": 2,
+          "mean": 10,
+          "ci95": 0,
+          "capped": 2
+        },
+        "next": {
+          "n": 2,
+          "mean": 6.5,
+          "ci95": 6.859999999999999,
+          "capped": 1
+        },
+        "pairedDifference": {
+          "n": 2,
+          "mean": -3.5,
+          "ci95": 6.859999999999999,
+          "capped": 0
+        }
+      },
+      "moves": [
+        117,
+        117,
+        117,
+        114
+      ],
+      "elapsedMs": [
+        29069.52740000002,
+        29952.970900000015,
+        31876.611600000004,
+        33078.106700000004
+      ]
+    }
+  ],
+  "limitations": "Synthetic seeded games, expected capped Rainbow objective, no prices or wall-clock game actions. Paired descriptive confidence intervals across several tool sets, not evidence of real profit/hour. Adviser budget is recorded and may be below production (400-1600). Starting offers hide the unobserved board from all advisers. Paired-only and top-mean are offline experimental switch rules, not production changes.",
+  "gameInput": false
+}

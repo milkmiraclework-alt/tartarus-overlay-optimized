@@ -1,6 +1,6 @@
 # Tartarus Optimized desktop overlay
 
-Version 0.2.20-local.30, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
+Version 0.2.20-local.31, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
 
 The Windows x64 installer and portable EXE include their own Electron, native
 capture libraries, analyzer, Rust/WASM reader and Monte Carlo core, and English
@@ -16,6 +16,13 @@ isolated development/tests.
 
 ## Calculation and corrections
 
+Final-day continuation decisions retain pending gift combinations and waiting
+event/office decisions. With one gift, all doors open and no remaining daily
+actions, a usable Horn weakly dominates the other gifts for the Rainbow
+objective and no longer depends on three lucky probes. Explicit gift ranks
+remain respected. No extra simulation budget is added; the solver cache uses
+the new rust31 namespace. Confirmation data and capture settings are preserved.
+
 When background pixels keep moving, readiness requires three matching strong
 semantic observations over at least 200ms instead of waiting for ambient motion
 to freeze. The static pixel gate remains. Menu parsing is reused only when the
@@ -28,9 +35,10 @@ settling/probe reasons for each capture; screenshot recording remains off.
 
 Worker handlers reject messages/errors from a terminated generation. A current
 reader error terminates its worker, and leaving the mode clears reader/solver
-failure flags so re-entry can restore accelerated processing. The local.28
-solver cache namespace and all calculation budgets are retained. An actual
-packaged Electron stress check cancels imports, injects an active failure and
+failure flags so re-entry can restore accelerated processing. The full
+calculation budgets are retained. The local.31 strategy uses a new cache
+namespace. An actual packaged Electron stress check cancels imports, injects
+an active failure and
 delivers old errors after replacement, then requires WASM reading and a complete
 solver pool with zero workers left after suspension.
 
@@ -118,10 +126,10 @@ Use generated states and isolated profiles, never a real game:
     node tools/desktop-settings-check.js
     node tools/solver-check.js
     node tools/bundled-site-check.js
-    node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe"
-    node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --instruments-only
-    node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --forecast-only
-    node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --rust-bench
+    node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe"
+    node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe" --instruments-only
+    node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe" --forecast-only
+    node tools/overlay-check.js --standalone "desktop/dist/builds/0.2.20-local.31/win-unpacked/Tartarus Optimized.exe" --rust-bench
     node tools/standalone-smoke.js
 
 Differential checks compare full seeded trajectories, action legality, state and
