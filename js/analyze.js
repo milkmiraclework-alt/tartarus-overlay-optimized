@@ -1948,6 +1948,7 @@
 
   const reader = { worker: null, failed: false, id: 0, pending: null, image: null, result: null, reading: null, ms: 0, picks: new Map(), pickId: 0, cornerPending: null };
   let readyWorker = null, readyFailed = false, readyCalibration = null, readyId = 0;
+  let readyDiagnostics = { epoch: null, probes: 0, reason: 'uncalibrated' };
   const readyJobs = new Map();
   let readyFrames = new WeakMap();
   function stopReadyWorker() {
@@ -1957,7 +1958,12 @@
     for (const task of readyJobs.values()) { clearTimeout(task.timer); task.resolve(false); }
     readyJobs.clear();
   }
-  function calibrateReadyWorker(calibration) {
+  function calibrateReadyWorker(calibration, result) {
+    // Meal-pick screens have no ordinary decision cards. Retain the last
+    // validated reference for the return to the bright board; every new
+    // capture still has to pass dimensions, fit, controls and stability.
+    if (result?.ok && result.chain && readyCalibration?.controls && !calibration?.controls
+      && (!calibration || calibration.width === readyCalibration.width && calibration.height === readyCalibration.height)) return;
     readyCalibration = calibration || null;
     // A timeout falls back to the bounded normal read for this move. A fresh
     // successful read can recover the cheap probe; never disable it for the
@@ -1976,6 +1982,7 @@
         const task = readyJobs.get(data.id);
         if (task) {
           readyJobs.delete(data.id); clearTimeout(task.timer);
+          if (readyDiagnostics.epoch === task.epoch && data.probe) Object.assign(readyDiagnostics, data.probe);
           if (data.ready && data.prepared && task.bitmap.width <= 2600) readyFrames.set(task.bitmap, data.prepared);
           task.resolve(!!data.ready);
         }
@@ -1986,7 +1993,8 @@
     return readyWorker;
   }
   async function probeFrame(bitmap, meta) {
-    if (!readyCalibration || !prepareReadyWorker()) return null;
+    if (readyDiagnostics.epoch !== meta.epoch) readyDiagnostics = { epoch: meta.epoch, probes: 0, reason: 'collecting' };
+    if (!readyCalibration || !prepareReadyWorker()) { readyDiagnostics.reason = readyFailed ? 'worker-unavailable' : 'uncalibrated'; return null; }
     let copy;
     try {
       if (bitmap.width > 2600) {
@@ -1997,8 +2005,9 @@
       } else copy = await createImageBitmap(bitmap);
       if (!readyWorker) { copy.close(); return false; }
       return await new Promise((resolve) => {
-        const id = ++readyId, timer = setTimeout(stopReadyWorker, 1000);
-        readyJobs.set(id, { resolve, timer, bitmap });
+        const id = ++readyId, timer = setTimeout(() => { readyDiagnostics.reason = 'worker-timeout'; stopReadyWorker(); }, 1000);
+        readyDiagnostics.probes++;
+        readyJobs.set(id, { resolve, timer, bitmap, epoch: meta.epoch });
         try { readyWorker.postMessage({ id, epoch: meta.epoch, bitmap: copy }, [copy]); }
         catch { copy.close(); stopReadyWorker(); }
       });
@@ -2289,7 +2298,7 @@
           reader.tracking = e.data.tracking || null;
           const p = reader.pending;
           if (p && e.data.id === p.id) {
-            calibrateReadyWorker(e.data.calibration);
+            calibrateReadyWorker(e.data.calibration, e.data.result);
             if (e.data.preview) {
               if (reader.image && typeof reader.image.close === 'function' && !(window.TartarusReport && window.TartarusReport.isOpen())) reader.image.close();
               reader.image = e.data.preview;
@@ -3858,6 +3867,7 @@
         for (const image of new Set([reader.image, reader.lastCapture])) if (image && typeof image.close === 'function') image.close();
         reader.image = null; reader.lastCapture = null; reader.result = null; reader.reading = null;
         stopReadyWorker(); readyFailed = false; readyCalibration = null; readyFrames = new WeakMap();
+        readyDiagnostics = { epoch: null, probes: 0, reason: 'suspended' };
         const previousOCR = ocr; ocr = null; ocrReady = false; ocrGeneration++;
         if (previousOCR) previousOCR.then((worker) => { if (worker) return worker.terminate(); }).catch(() => {});
       },
@@ -3870,6 +3880,7 @@
       captureImage: () => reader.lastCapture,
       prepare: () => { const worker = readerWorker(); if (FAST_DESKTOP) { prepareSolverWorkers(); prepareReadyWorker(); } return worker; },
       probeFrame,
+      readinessInfo: () => ({ ...readyDiagnostics }),
       readerInfo: () => reader.tracking || null,
       prepareOCR: () => ocrWorker(),
       readPick: (bitmap) => readPick(bitmap),

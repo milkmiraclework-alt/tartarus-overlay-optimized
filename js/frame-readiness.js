@@ -78,7 +78,7 @@
     if (!menu) return '';
     return menu + '|' + JSON.stringify({ warden: result.warden.cell, cells: result.cells.map((cell) => [cell.kind, cell.beast, cell.tier, !!cell.nest, !!cell.jaws, !!cell.event, !!cell.prey]) });
   }
-  function create({ visualOnly = false } = {}) {
+  function create({ visualOnly = false, semanticOnly = false } = {}) {
     let calibration = null, generation = null, previous = null, stableAt = 0, count = 0;
     function reset() { previous = null; stableAt = 0; count = 0; }
     return {
@@ -86,9 +86,9 @@
       get calibration() { return calibration; },
       observe({ epoch, time, sample, controls, valid, fresh = true }) {
         if (generation !== epoch) { generation = epoch; reset(); }
-        if (!calibration || !valid || (!visualOnly && (!controls || controls === calibration.controls)) || !fresh || difference(calibration.sample, sample).changed < 0.01) { reset(); return false; }
-        const delta = previous && difference(previous.sample, sample);
-        if (!previous || (!visualOnly && controls !== previous.controls) || delta.changed > 0.004 || delta.mean > 1) { stableAt = time; count = 1; }
+        if (!calibration || !valid || (!visualOnly && (!controls || controls === calibration.controls)) || !fresh || (!semanticOnly && difference(calibration.sample, sample).changed < 0.01)) { reset(); return false; }
+        const delta = previous && !semanticOnly && difference(previous.sample, sample);
+        if (!previous || (!visualOnly && controls !== previous.controls) || (!semanticOnly && (delta.changed > 0.004 || delta.mean > 1))) { stableAt = time; count = 1; }
         else count++;
         previous = { sample, controls };
         return count >= 3 && time - stableAt >= 200;

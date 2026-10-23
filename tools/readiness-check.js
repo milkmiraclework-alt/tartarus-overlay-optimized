@@ -56,6 +56,18 @@ assert.equal(visual.observe({ epoch: 1, time: 500, sample: changed, valid: true 
 assert.equal(visual.observe({ epoch: 1, time: 600, sample: changed, valid: true }), true);
 assert.equal(visual.observe({ epoch: 2, time: 700, sample: changed, valid: true }), false);
 assert.equal(visual.observe({ epoch: 2, time: 800, sample: changed, valid: true, fresh: false }), false);
+const semantic = R.create({ semanticOnly: true });
+semantic.calibrate({ controls: 'old board' });
+for (const time of [0,100,300]) assert.equal(semantic.observe({ epoch: 1, time, valid: true, controls: 'old board' }), false);
+assert.equal(semantic.observe({ epoch: 1, time: 400, valid: true, controls: 'new board' }), false);
+assert.equal(semantic.observe({ epoch: 1, time: 500, valid: true, controls: 'new board' }), false);
+assert.equal(semantic.observe({ epoch: 1, time: 600, valid: true, controls: 'new board' }), true);
+assert.equal(semantic.observe({ epoch: 2, time: 700, valid: true, controls: 'new board' }), false);
+assert.equal(semantic.observe({ epoch: 2, time: 800, valid: false, controls: '' }), false);
+assert.equal(semantic.observe({ epoch: 2, time: 900, valid: true, controls: 'new board' }), false);
+assert.equal(semantic.observe({ epoch: 2, time: 1000, valid: true, controls: 'different menu' }), false);
+assert.equal(semantic.observe({ epoch: 2, time: 1100, valid: true, controls: 'different menu' }), false);
+assert.equal(semantic.observe({ epoch: 2, time: 1200, valid: true, controls: 'different menu' }), true);
 
 async function harness(callback, pace = 1) {
   let now = 0, next = 0, wake, text = '';
@@ -89,7 +101,8 @@ async function harness(callback, pace = 1) {
     }
     now = target; await flush();
   }
-  return { C, hit, advance, frames, events, flush };
+  return { C, hit, advance, frames, events, flush,
+    delay: ms => new Promise(resolve => timers.push({ fn: resolve, at: now + ms, active: true })) };
 }
 (async () => {
   let calls = 0;
@@ -99,6 +112,11 @@ async function harness(callback, pace = 1) {
   assert.equal(h.events[0].at, 350);
   assert.ok(h.events[0].at < 2500); assert.ok(h.frames.slice(0, -1).every((frame) => frame.closed)); assert.ok(!h.events[0].frame.closed);
   await h.advance(3000); assert.equal(h.events.length, 1); h.C.stopLog(); h.C.stopWindow();
+  calls = 0; h = await harness(async () => { calls++; await h.delay(180); return calls >= 3; });
+  await h.hit(); await h.advance(689); assert.equal(h.events.length, 0);
+  await h.advance(690); assert.equal(h.events.length, 1);
+  assert.equal(h.events[0].at, 690, 'the probe duration stacked another 100ms wait after every recognition');
+  h.C.stopLog(); h.C.stopWindow();
   h = await harness(async () => { throw new Error('Probe failed'); });
   await h.hit(); await h.advance(2499); assert.equal(h.events.length, 0); await h.advance(2500);
   assert.equal(h.events.length, 1); assert.equal(h.events[0].settle.mode, 'deadline'); h.C.stopLog(); h.C.stopWindow();

@@ -2058,8 +2058,9 @@
   // for each action the game allows now. Replace and End have pale labels;
   // the Consume card is red all over, its label too. Returns which cards
   // show, or null when there's no such row.
-  function readDecision(img, loc) {
+  function readDecision(img, loc, readBounds) {
     const bottom = Math.max(at(loc, 0, 3)[1], at(loc, 5, 3)[1]) + 30 * loc.s;
+    if (readBounds) readBounds.top = Math.floor(bottom);
     if (bottom >= img.height - 20) return null;
     const x0 = Math.max(0, Math.min(at(loc, 0, 0)[0], at(loc, 0, 3)[0]) - 40 * loc.s);
     const x1 = Math.min(img.width - 1, Math.max(at(loc, 5, 0)[0], at(loc, 5, 3)[0]) + 40 * loc.s);
@@ -2164,6 +2165,7 @@
     // "Consume" has as many letters as "Replace": a label on the Consume
     // card's red is that card's. Read across the label and above it.
     const redBy = (l) => {
+      if (readBounds) readBounds.top = Math.min(readBounds.top, Math.max(0, Math.round(l.mid - 5 * l.h)));
       let n = 0;
       let hit = 0;
       const w = l.x1 - l.x0;

@@ -1,0 +1,99 @@
+{
+  "version": "0.2.20-local.30",
+  "checkedAt": "2026-10-23T08:46:45.498Z",
+  "motionDifference": {
+    "changed": 0.026041666666666668,
+    "mean": 0.5208333333333334
+  },
+  "current": {
+    "outcomes": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ],
+    "reasons": [
+      "collecting",
+      "state-consensus",
+      "state-consensus",
+      "ready-state",
+      "ready-state"
+    ],
+    "costs": [
+      {
+        "ms": 84,
+        "reusedMenu": false
+      },
+      {
+        "ms": 560,
+        "reusedMenu": false
+      },
+      {
+        "ms": 193,
+        "reusedMenu": true
+      },
+      {
+        "ms": 211,
+        "reusedMenu": true
+      },
+      {
+        "ms": 452,
+        "reusedMenu": true
+      }
+    ],
+    "readyAtMs": 1170,
+    "elapsedMs": 1635,
+    "oldFramesRejected": true,
+    "missingControlsRejected": true,
+    "menuInvalidated": true,
+    "epochFence": true
+  },
+  "previous": {
+    "outcomes": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "reasons": [
+      "visual",
+      "visual",
+      "visual",
+      "visual",
+      "visual"
+    ],
+    "costs": [
+      {
+        "ms": 20,
+        "reusedMenu": false
+      },
+      {
+        "ms": 14,
+        "reusedMenu": false
+      },
+      {
+        "ms": 20,
+        "reusedMenu": false
+      },
+      {
+        "ms": 23,
+        "reusedMenu": false
+      },
+      {
+        "ms": 22,
+        "reusedMenu": false
+      }
+    ],
+    "readyAtMs": null,
+    "elapsedMs": 535,
+    "oldFramesRejected": true,
+    "missingControlsRejected": true,
+    "menuInvalidated": true,
+    "epochFence": null
+  },
+  "limitations": "Two saved frames with synthetic motion only inside the empty courtyard; same strong fit/control/confidence gates. Elapsed times are test sequence timings, not live-game latency.",
+  "gameCapture": false,
+  "gameInput": false
+}

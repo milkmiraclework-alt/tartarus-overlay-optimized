@@ -1,6 +1,6 @@
 # Tartarus Optimized desktop overlay
 
-Version 0.2.20-local.29, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
+Version 0.2.20-local.30, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
 
 The Windows x64 installer and portable EXE include their own Electron, native
 capture libraries, analyzer, Rust/WASM reader and Monte Carlo core, and English
@@ -15,6 +15,16 @@ port 8090 is unaffected. --site-port=N changes only the virtual origin for
 isolated development/tests.
 
 ## Calculation and corrections
+
+When background pixels keep moving, readiness requires three matching strong
+semantic observations over at least 200ms instead of waiting for ambient motion
+to freeze. The static pixel gate remains. Menu parsing is reused only when the
+entire input region is byte-identical, including pixels above labels sampled
+for card colours; the board, fit and warden are read fresh. Probe duration is
+included in the 100ms cadence rather than followed by another 100ms delay.
+Ordinary-board calibration survives a meal menu, but dimensions/fit/controls
+and exact-bitmap handoff are still checked. The local log records only numeric
+settling/probe reasons for each capture; screenshot recording remains off.
 
 Worker handlers reject messages/errors from a terminated generation. A current
 reader error terminates its worker, and leaving the mode clears reader/solver

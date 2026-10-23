@@ -1408,3 +1408,26 @@ requires the real saved-frame read to stay accelerated and the solver pool to
 recover. It waits for asynchronous OCR cleanup and requires zero remaining
 workers after exit. This covers a real-user regression missed by warm
 saved-frame performance benchmarks. No game input or real-game capture is used.
+
+## Readiness during ambient motion (local.30)
+
+`node tools/ready-motion-check.js --frames <saved-frames> --reference <old-js>
+--report <json>` runs actual Electron readiness workers against two saved WebP
+frames with synthetic motion confined to their empty courtyard. The pixel
+gate must stay unsettled; three confident matching semantic reads over 200ms
+must become ready. Old moving screens, removed controls, changed epochs and
+menu-cache invalidation must remain rejected. Timing is illustrative and
+excludes real game animations, capture and the first probe scheduling delay.
+
+The unchanged/static path keeps its two cheap observations. Moving new screens
+can pay for repeated semantics; incomplete menus retain the 250ms retry bound.
+Menu reuse compares every RGBA byte in the input region, including the actual
+above-label colour probes recorded by readDecision's optional readBounds
+argument. Normal reader output and thresholds are unchanged. The accepted
+bitmap still supplies the final reader's immutable handoff.
+
+`tools/readiness-check.js` also simulates 180ms probes: three complete checks
+now finish at 690ms instead of stacking 100ms after each one (890ms). Three
+observations/200ms, epoch changes, unavailable probes, cancellation and the
+original deadlines are retained. The local picture log includes settling mode,
+wait duration, probe count and reason even with screenshot recording disabled.

@@ -10,13 +10,18 @@ class Worker {
 const window = { Tartarus: require('../js/engine.js'), TartarusSolver: require('../js/solver.js'), TartarusDesktop: { fast: true } };
 const source = fs.readFileSync(require.resolve('../js/analyze.js'), 'utf8').replace(/\r\n/g, '\n');
 const init = '  buildBoard();\n  bind();\n  render();'; assert.ok(source.includes(init));
-vm.runInNewContext(source.replace(init, '  window.testReady = { calibrateReadyWorker, prepareReadyWorker, probeFrame };'), {
+vm.runInNewContext(source.replace(init, '  window.testReady = { calibrateReadyWorker, prepareReadyWorker, probeFrame, calibration: () => readyCalibration };'), {
   window, document: { currentScript: null }, navigator: { hardwareConcurrency: 4 }, localStorage: { getItem: () => null },
   Worker, setTimeout: fn => { timers.set(++next, fn); return next; }, clearTimeout: id => timers.delete(id),
   createImageBitmap: async b => ({ width: b.width, height: b.height, close() {} }),
 });
 (async () => {
   const A = window.testReady, calibration = { width: 100, height: 100, controls: 'patrol' };
+  A.calibrateReadyWorker(calibration);
+  A.calibrateReadyWorker(null, { ok: true, chain: { targets: [1,2] } });
+  assert.equal(A.calibration(), calibration, 'meal-pick screen discarded the last valid ordinary-board reference');
+  A.calibrateReadyWorker({ width: 200, height: 100, controls: '' }, { ok: true, chain: { targets: [1,2] } });
+  assert.equal(A.calibration().width, 200, 'known size change retained an incompatible reference');
   A.calibrateReadyWorker(calibration);
   const stalled = A.probeFrame({ width: 100, height: 100 }, { epoch: 1 });
   await new Promise(setImmediate); assert.equal(timers.size, 1);

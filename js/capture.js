@@ -370,6 +370,7 @@
     if (burst !== b || !readinessProbe || b.probing || !mayCapture()) return;
     b.probing = true;
     const epoch = b.epoch;
+    const probeStarted = performance.now();
     let frame;
     try {
       frame = await grab();
@@ -389,7 +390,8 @@
       b.probing = false;
       if (burst === b && readinessProbe && !b.probeUnavailable && performance.now() + 100 < b.deadline) {
         clearTimeout(b.probeTimer);
-        b.probeTimer = setTimeout(() => probe(b), Math.max(100, b.lastEventAt + Math.max(75, 150 * pace) - performance.now()));
+        const now = performance.now();
+        b.probeTimer = setTimeout(() => probe(b), Math.max(0, 100 - (now - probeStarted), b.lastEventAt + Math.max(75, 150 * pace) - now));
       }
     }
   }
@@ -402,7 +404,7 @@
     const frame = earlyFrame || await grab();
     if (epoch !== burstEpoch || !agreed()) { if (frame) frame.close(); return; }
     if (frame) setState({ frames: state.frames + 1 });
-    emit('frame', { kind: b.kind, hits: b.hits, frame, why: frame ? '' : whyNot(), time: new Date(), settle: { mode: earlyFrame ? 'ready' : 'deadline', waitedMs: Math.round(performance.now() - b.started), savedMs: earlyFrame ? Math.max(0, Math.round(b.deadline - performance.now())) : 0 } });
+    emit('frame', { kind: b.kind, hits: b.hits, frame, why: frame ? '' : whyNot(), time: new Date(), settle: { mode: earlyFrame ? 'ready' : 'deadline', epoch, waitedMs: Math.round(performance.now() - b.started), savedMs: earlyFrame ? Math.max(0, Math.round(b.deadline - performance.now())) : 0 } });
   }
 
   // #endregion

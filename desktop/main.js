@@ -1033,7 +1033,7 @@ ipcMain.on('site:follow', (e, data) => {
   lastFollow = data;
   if (data.log !== was.log || data.window !== was.window || data.agreed !== was.agreed) note(`follow: agreed=${data.agreed} log=${data.log}${data.error ? ` (${data.error})` : ''} window=${data.window}`);
   const f = data.lastFrame;
-  if (f && (!was.lastFrame || f.at !== was.lastFrame.at)) note(`picture: ${f.kind}${f.ok ? '' : ` (none taken: ${f.why})`}`);
+  if (f && (!was.lastFrame || f.at !== was.lastFrame.at)) note(`picture: ${f.kind}${f.ok ? '' : ` (none taken: ${f.why})`}${f.settle ? `; settle=${f.settle.mode}, waited=${f.settle.waitedMs}ms, probe=${f.settle.readiness?.reason || 'none'}, probes=${f.settle.readiness?.probes || 0}` : ''}`);
   if (typeof data.agreed === 'boolean' && data.agreed !== agreed) {
     agreed = data.agreed;
     // Before anything runs, the player reads follow.html and agrees there.

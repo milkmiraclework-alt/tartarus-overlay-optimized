@@ -155,7 +155,8 @@
     if (!active || !game.running || !C.agreed()) { if (event.frame) event.frame.close(); return; }
     const mine = ++id, started = performance.now();
     A.invalidate({ forecast: 'pause', preserve: true });
-    lastFrame = { at: Date.now(), kind: event.kind, ok: !!event.frame, why: event.why || '', settle: event.settle || null };
+    const readiness = event.kind === 'board' && A.readinessInfo ? A.readinessInfo() : null;
+    lastFrame = { at: Date.now(), kind: event.kind, ok: !!event.frame, why: event.why || '', settle: event.settle ? { ...event.settle, readiness: readiness?.epoch === event.settle.epoch ? readiness : { reason: 'not-probed', probes: 0 } } : null };
     if (!event.frame && event.kind !== 'treasure') diag.failed++;
     tell();
     if (!event.frame && event.kind !== 'treasure') { A.setReadStatus(null); return; }
