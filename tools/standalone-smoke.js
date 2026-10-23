@@ -73,7 +73,15 @@ async function connect(url) {
       const canvas=document.createElement('canvas');canvas.width=680;canvas.height=110;const ctx=canvas.getContext('2d');
       ctx.fillStyle='white';ctx.fillRect(0,0,680,110);ctx.fillStyle='black';ctx.font='42px Arial';ctx.fillText('TARTARUS 12345',20,68);
       const text=(await worker.recognize(canvas)).data.text.trim();
-      return {text,ocrMs:Math.round(performance.now()-start),version:(await(await fetch('/bundle.json')).json()).version,agreed:TartarusCapture.agreed()};
+      const ocrMs=Math.round(performance.now()-start);
+      new Function('module',await(await fetch('/js/rust-solver.js')).text())(undefined);
+      const bytes=await(await fetch('/js/solver-core.wasm')).arrayBuffer(),core=await TartarusRust.fromBytes(bytes);
+      const state=Tartarus.newGame({seed:'PORTABLE-RUST',params:{rewards:false,startTools:0}}),options={rollouts:8,seed:7,stream:1};
+      const native=TartarusRust.solve(core,state,options),reference=TartarusSolver.solve(state,options);
+      for(const job of [native,reference]){let result;do{result=job.step(60,true)}while(!result.done);if(result.rounds!==8)throw new Error('Portable rollout budget mismatch');}
+      const values=job=>JSON.stringify(job.rows.map(r=>[r.action,r.vals,r.best,r.policy]));
+      if(values(native)!==values(reference))throw new Error('Portable Rust samples differ from JavaScript');
+      return {text,ocrMs,version:(await(await fetch('/bundle.json')).json()).version,agreed:TartarusCapture.agreed(),rustSampleParity:true,rustRollouts:8};
     })()`);
     assert.match(result.text, /TARTARUS\s+12345/i); assert.equal(result.version, version); assert.equal(result.agreed, false);
     const log = fs.readFileSync(path.join(profile, 'logs/overlay.log'), 'utf8');
@@ -84,7 +92,7 @@ async function connect(url) {
       occupiedPortIndependent: true, gameInput: false };
     fs.writeFileSync(path.join(ROOT, 'desktop/dist/portable-smoke.json'), JSON.stringify(report, null, 2) + '\n');
     assert.equal(await (await fetch(`http://127.0.0.1:${sitePort}/bundle.json`)).text(), 'EXTERNAL SENTINEL');
-    console.log('PASS: actual portable EXE launches from an unrelated directory without original-install paths; native libraries and offline OCR work, an unrelated listener on the same port is untouched, capture stays disabled: ' + JSON.stringify(report));
+    console.log('PASS: actual portable EXE launches from an unrelated directory without original-install paths; Rust samples/rankings match, native libraries and offline OCR work, an unrelated listener on the same port is untouched, capture stays disabled: ' + JSON.stringify(report));
   } finally {
     if (browser?.ws.readyState === WebSocket.OPEN) browser.ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
     page?.ws.close(); browser?.ws.close();

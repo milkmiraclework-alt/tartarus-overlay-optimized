@@ -28,13 +28,17 @@ for (let i = 0; i < 80; i++) {
 const engine = A.buildState(next).st;
 assert.equal(engine.tools.join(), 'crown', 'An erroneous icon reached the solver');
 assert.equal(A.modelFrom(engine, next).toolsConfirmed.tools, 'crown', 'A simulated move forgot confirmation');
-assert.ok(scan(next, [icon('skewer'), icon('cage')]).toolsToConfirm, 'An extra icon was silently dismissed');
+for (let slots = 0; slots <= 12; slots++) {
+  const noisy = scan(next, Array.from({ length: slots }, (_, n) => icon(n % 2 ? 'skewer' : 'cage')));
+  assert.equal(noisy.toolsToConfirm, '', 'Noisy slot segmentation cancelled manual confirmation');
+  assert.equal(A.buildState(noisy).st.tools.join(), 'crown', 'Noisy slots changed simulation instruments');
+}
 assert.equal(scan(next, [icon('skewer')], { day: 1 }).toolsConfirmed, null, 'A new run reused confirmation');
 const changed = { ...next, tools: ['claws'] };
 assert.ok(scan(changed, [icon('skewer')]).toolsToConfirm, 'Changing instruments kept an unrelated confirmation');
 assert.equal(A.resultKey(next, 1600), A.resultKey({ ...next, toolsConfirmed: null, toolsPanelSlots: 6, toolsToConfirm: 'different notice', toolsOffer: { options: ['maiden'] } }, 1600));
 assert.notEqual(A.resultKey(next, 1600), A.resultKey(changed, 1600));
-console.log('PASS: 80 conflicting/missing panels retain confirmed instruments across reload; solver receives Crown, extra icons/new runs/changed instruments invalidate confirmation; UI metadata cannot fragment the solver cache.');
+console.log('PASS: 80 conflicting/missing panels and 0..12 noisy slots retain confirmed instruments across reload; solver receives Crown; new runs/changed instruments invalidate confirmation; UI metadata cannot fragment the solver cache.');
 base = A.blankModel(); base.tools = ['coin']; base.step = 'choice'; base.choice = { kind: 'tool', options: ['fire', 'collar', 'shackles'] };
 base.toolsOffer = { options: base.choice.options.slice(), advised: 'shackles' };
 next = scan(base, [icon('coin')]); next.step = 'manage';

@@ -32,6 +32,7 @@ const artifacts = (process.argv.includes('--unpacked-only') ? [] : fs.readdirSyn
 const report = { version: manifest.version, architecture: 'x64', builtAt: new Date().toISOString(),
   electron: require('../desktop/node_modules/electron/package.json').version,
   appAsarSha256: sha(fs.readFileSync(archive)), wasmSha256: manifest.files['js/scan-kernels.wasm'],
+  solverWasmSha256: manifest.files['js/solver-core.wasm'],
   sourceSha256: manifest.sourceFiles, assets: Object.keys(manifest.files).length, artifacts };
 fs.writeFileSync(path.join(DIST, 'standalone-build.json'), JSON.stringify(report, null, 2) + '\n');
 fs.writeFileSync(path.join(DIST, 'SHA256SUMS.txt'), artifacts.map((a) => `${a.sha256}  ${a.file}`).join('\n') + '\n');

@@ -1,0 +1,107 @@
+{
+  "checkedAt": "2026-10-23T05:45:35.075Z",
+  "referenceCommit": "72d284dd7e56a28f505903b68e3abc82f5427dd2",
+  "games": 16384,
+  "legacyJavaScriptEquivalenceGames": 256,
+  "changedPolicy": "Fanged Guillotine lower-tier Wolf meals included in exact chain evaluation",
+  "exactRegression": {
+    "previousValue": 3,
+    "correctedValue": 6.75,
+    "expectedBites": 1.25,
+    "nativeMatches": true
+  },
+  "results": [
+    {
+      "tools": [],
+      "old": {
+        "n": 4096,
+        "mean": 2.98046875,
+        "ci95": 0.060581572374704504
+      },
+      "corrected": {
+        "n": 4096,
+        "mean": 2.9814453125,
+        "ci95": 0.060559172762843984
+      },
+      "pairedDifference": {
+        "n": 4096,
+        "mean": 0.0009765625,
+        "ci95": 0.0013532813072828919
+      },
+      "oldCapped": 60,
+      "correctedCapped": 60
+    },
+    {
+      "tools": [
+        "guillotine"
+      ],
+      "old": {
+        "n": 4096,
+        "mean": 3.34521484375,
+        "ci95": 0.060765461513937705
+      },
+      "corrected": {
+        "n": 4096,
+        "mean": 3.378173828125,
+        "ci95": 0.06007430960801853
+      },
+      "pairedDifference": {
+        "n": 4096,
+        "mean": 0.032958984375,
+        "ci95": 0.04462956531021399
+      },
+      "oldCapped": 67,
+      "correctedCapped": 70
+    },
+    {
+      "tools": [
+        "guillotine",
+        "saw",
+        "whip"
+      ],
+      "old": {
+        "n": 4096,
+        "mean": 4.250732421875,
+        "ci95": 0.05662462940635678
+      },
+      "corrected": {
+        "n": 4096,
+        "mean": 4.303466796875,
+        "ci95": 0.05631698430106131
+      },
+      "pairedDifference": {
+        "n": 4096,
+        "mean": 0.052734375,
+        "ci95": 0.03891077598811751
+      },
+      "oldCapped": 40,
+      "correctedCapped": 39
+    },
+    {
+      "tools": [
+        "guillotine",
+        "crown",
+        "skewer"
+      ],
+      "old": {
+        "n": 4096,
+        "mean": 6.553466796875,
+        "ci95": 0.05902642130893156
+      },
+      "corrected": {
+        "n": 4096,
+        "mean": 6.585205078125,
+        "ci95": 0.05831197156776859
+      },
+      "pairedDifference": {
+        "n": 4096,
+        "mean": 0.03173828125,
+        "ci95": 0.04134579001933681
+      },
+      "oldCapped": 369,
+      "correctedCapped": 378
+    }
+  ],
+  "limitations": "Paired seeded synthetic complete runs of the continuation policy, not full Monte Carlo decisions at every turn. Confidence intervals use paired differences and are descriptive across several tool sets. This fixes rule-model consistency; real-game profit/hour is not measured.",
+  "gameInput": false
+}

@@ -49,9 +49,9 @@ module.exports = async function checkInstruments(resume = false, throughOverlay 
       check(!A.desktopSnapshot().toolsConfirm, 'These are right did not clear the warning');
       check(A.desktopSnapshot().cacheHit, 'Confirmation recomputed identical Monte Carlo inputs');
     }
-    for (const ids of [['skewer'], ['cage'], [], ['skewer', 'cage']]) check(!(await observe(ids)).toolsConfirm, 'A later frame forgot confirmation');
+    for (const ids of [['skewer'], ['cage'], [], ['skewer', 'cage'], ['skewer', 'cage', 'claws', 'maul', 'saw']]) check(!(await observe(ids)).toolsConfirm, 'A later frame forgot confirmation after noisy slot growth');
     const data = saved();
     check(data.model.tools.join() === 'crown' && data.model.toolsConfirmed.tools === 'crown', 'Confirmed instruments were not saved correctly');
-    return { resume, frames: 4, tools: data.model.tools, confirmation: data.model.toolsConfirmed, cacheHit: A.desktopSnapshot().cacheHit };
+    return { resume, frames: 5, tools: data.model.tools, confirmation: data.model.toolsConfirmed, cacheHit: A.desktopSnapshot().cacheHit };
   } finally { panel = null; window.Worker = OriginalWorker; }
 };

@@ -1,0 +1,27 @@
+{
+  "referenceCommit": "72d284dd7e56a28f505903b68e3abc82f5427dd2",
+  "phase": "initial exact port, before the separately tested Guillotine policy correction",
+  "wasmSha256": "933e1bd78d8bd1cfad82ccf427ee691a1a05de4595406a8a7f1e693675de4e68",
+  "native": {
+    "checkedAt": "2026-10-23T05:25:38.808Z",
+    "runs": 264,
+    "moves": 18779,
+    "alternativeActions": 81,
+    "monteCarloPositions": 19,
+    "elapsedMs": 12150,
+    "reference": "js",
+    "binary": "native\\tartarus\\target\\release\\tartarus-core.exe",
+    "gameInput": false
+  },
+  "wasm": {
+    "checkedAt": "2026-10-23T05:28:12.056Z",
+    "runs": 264,
+    "moves": 18779,
+    "alternativeActions": 81,
+    "monteCarloPositions": 19,
+    "elapsedMs": 9641,
+    "reference": "js",
+    "binary": "js/solver-core.wasm",
+    "gameInput": false
+  }
+}

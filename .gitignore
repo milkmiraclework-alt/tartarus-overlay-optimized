@@ -18,3 +18,6 @@ desktop/dist/
 
 # Claude Code's working copies.
 .claude/
+
+# Local Rust calculation-core build output.
+native/tartarus/target/

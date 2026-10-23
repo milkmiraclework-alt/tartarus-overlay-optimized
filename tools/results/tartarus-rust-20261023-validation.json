@@ -1,0 +1,519 @@
+{
+  "version": "0.2.19-local.26",
+  "checkedAt": "2026-10-23T06:06:38.122Z",
+  "sourceSha256": {
+    "js/engine.js": "1623a734c290b442de0298c3c1efb4f6b6a0d7247ea273402a4baaca34c0f2e9",
+    "js/solver.js": "810c090d483e3700f7771696127903d83bfde3b754ec9c808ac9a762983b8000",
+    "js/solver-worker.js": "807772aa60d42f13096236081ef6f4e13d717253c3b31409fe33d7ebb7c8709b",
+    "js/rust-solver.js": "2e0374a4874f5b2497194fb8c9032ed91fe4dc8cda667fd47cb29a0540d8e997"
+  },
+  "rust": {
+    "wasmSha256": "322860f7d159513fa33cc2cc2e2ebe056aba95e97236bacc2733a70b728e29ba",
+    "sources": {
+      "js/engine.js": "1623a734c290b442de0298c3c1efb4f6b6a0d7247ea273402a4baaca34c0f2e9",
+      "js/solver.js": "810c090d483e3700f7771696127903d83bfde3b754ec9c808ac9a762983b8000",
+      "js/tool-combos.js": "dc164a9e9f8767a1ce14b336d4aa0364bc87fcd6dbd3c21af2ba54f8d830fd52",
+      "native/tartarus/Cargo.toml": "78328f87c65db0adf19dee4c00471bcb8f50f59e46a9191d8e2aee419e7fde1d",
+      "native/tartarus/Cargo.lock": "98f00b3be01db517b4fdad5f643913cd3316430fa8a90218c0606bf1b34fb2aa",
+      "native/tartarus/data/policy.json": "eb60e30a8d4b7b80215dda606bded00e9ca1997024ba72116c52944a87843ea1",
+      "native/tartarus/src/api.rs": "ae79de4c49ac9fa6d628de742de56a9166406e44cc381a31d2e6393d7979b2b6",
+      "native/tartarus/src/engine.rs": "f7c8b552908a575bf741345bc2e26ad11ac553a08a13f28136d62e24b74fbfef",
+      "native/tartarus/src/job.rs": "e0115deabf1d03ceb448da851b3abd98b981c6c1f5f82e5e95a8ec13b35dce33",
+      "native/tartarus/src/lib.rs": "22ae39369cead5518f96861dcf8ee34c00cc9c29847d600da07af6d5d91b53da",
+      "native/tartarus/src/main.rs": "17a68181589ad9ce217aa3da5ed32f6fc7a27d00c09d0aef7d0d0107488f2ffb",
+      "native/tartarus/src/model.rs": "10015bbc075abc8ebd8318af92cc2832ff6ef4b4fbc1929e6704b225a5a4edc5",
+      "native/tartarus/src/policy.rs": "edcbde46cccc9974542dcaf4bde290b39037ddd1aea98408086caf18989513f3"
+    }
+  },
+  "exactPortBeforePolicyChange": {
+    "referenceCommit": "72d284dd7e56a28f505903b68e3abc82f5427dd2",
+    "phase": "initial exact port, before the separately tested Guillotine policy correction",
+    "wasmSha256": "933e1bd78d8bd1cfad82ccf427ee691a1a05de4595406a8a7f1e693675de4e68",
+    "native": {
+      "checkedAt": "2026-10-23T05:25:38.808Z",
+      "runs": 264,
+      "moves": 18779,
+      "alternativeActions": 81,
+      "monteCarloPositions": 19,
+      "elapsedMs": 12150,
+      "reference": "js",
+      "binary": "native\\tartarus\\target\\release\\tartarus-core.exe",
+      "gameInput": false
+    },
+    "wasm": {
+      "checkedAt": "2026-10-23T05:28:12.056Z",
+      "runs": 264,
+      "moves": 18779,
+      "alternativeActions": 81,
+      "monteCarloPositions": 19,
+      "elapsedMs": 9641,
+      "reference": "js",
+      "binary": "js/solver-core.wasm",
+      "gameInput": false
+    }
+  },
+  "validation": {
+    "native": {
+      "checkedAt": "2026-10-23T05:52:27.388Z",
+      "runs": 264,
+      "moves": 18477,
+      "alternativeActions": 133,
+      "monteCarloPositions": 43,
+      "analyzerCardStates": 24,
+      "elapsedMs": 11853,
+      "reference": "js",
+      "binary": "native\\tartarus\\target\\release\\tartarus-core.exe",
+      "gameInput": false
+    },
+    "wasm": {
+      "checkedAt": "2026-10-23T05:48:28.852Z",
+      "runs": 264,
+      "moves": 18477,
+      "alternativeActions": 133,
+      "monteCarloPositions": 43,
+      "analyzerCardStates": 24,
+      "elapsedMs": 8405,
+      "reference": "js",
+      "binary": "js/solver-core.wasm",
+      "gameInput": false
+    },
+    "fixtureSetup": "explicit held tools are added only after resolving the starting-offer setup block; every addition is asserted",
+    "legality": "110592 JS reference eater/meal pairs passed; Rust action legality/state/RNG differentially verified throughout all trajectories and 133 alternate actions",
+    "worker": "actual WASM cold-start pause/promotion, original seed retained, worker stream 3, replacement and cancellation passed",
+    "reference": "JS clones/independent rules/strategy overrides passed; exact shared vs isolated chain cache across 28 tool/rule combinations and 270 changed-policy slices passed",
+    "calculation": "unchanged frames/confirmations retain job IDs and samples; objective/count before solve; source cancellation cannot restart work; CPU adaptation 1..128 logical processors and full fallback budget passed",
+    "packagedAssets": "all 41 files and core ASAR sources match build fingerprints; native Koffi packaged/unpacked; Rust source fingerprint and binary match",
+    "runtime": "passed: actual packaged Electron, isolated profile/fake window/log, Rust backend required for advice, complete budget, status/correction, 1080p/4K capture pixel parity, cache/reload/restart and three entry/exit cleanup cycles",
+    "offline": "passed: original-install paths unavailable, external HTTP blocked, local English OCR reads TARTARUS 12345",
+    "portable": "passed: actual distributed EXE from an unrelated directory; native libraries/OCR and Rust samples work; capture remains disabled; unrelated occupied origin port untouched",
+    "assetProtocol": "passed: internal session protocol opens no port; hashes/MIME/HEAD/POST, path/origin rejection; web simulator, guides, reporting/sharing and web polling assets absent",
+    "instruments": "passed: physical overlay click across three progress updates; ten conflicting/missing/growing-slot frames across reload; confirmed Crown retained and used by simulation",
+    "forecast": "passed on final packaged code: Rust required for every raw forecast result; partial promotion retains 1600 samples; rolling horizon and two door menus reused; zero workers retained outside mode",
+    "recordingPolicy": "passed: production settings block in isolated in-memory profiles; inherited recording disabled once, consent/log/layout unchanged, explicit later opt-in retained, recording-off never scans/prunes historical records",
+    "workerRecovery": "passed: injected Rust initialization rejection falls back to the exact JS stream and full requested budget; async failures reach renderer recovery"
+  },
+  "timing": {
+    "electron": {
+      "electron": "44.5.1",
+      "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+      "checkedAt": "2026-10-23T05:52:40.086Z",
+      "rounds": 64,
+      "repeats": 5,
+      "fixtures": [
+        {
+          "name": "day-1 instrument offer",
+          "day": 1,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 419.9,
+          "rustMs": 75.5,
+          "speedup": 5.56,
+          "measurements": {
+            "javascript": [
+              496.8,
+              409.5,
+              419.9,
+              423.6,
+              413.7
+            ],
+            "rust": [
+              86.6,
+              75.5,
+              67.3,
+              90.1,
+              63
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "day-1 patrol",
+          "day": 1,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 398.9,
+          "rustMs": 66.1,
+          "speedup": 6.03,
+          "measurements": {
+            "javascript": [
+              405.1,
+              398.9,
+              400.2,
+              319.6,
+              311.8
+            ],
+            "rust": [
+              75.3,
+              60.5,
+              71,
+              66.1,
+              57.7
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "populated tools",
+          "day": 8,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 805.5,
+          "rustMs": 167.8,
+          "speedup": 4.8,
+          "measurements": {
+            "javascript": [
+              926.9,
+              837.2,
+              805.5,
+              802.9,
+              737.1
+            ],
+            "rust": [
+              174.7,
+              193.1,
+              163.8,
+              167.8,
+              148.8
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "Cage Fight",
+          "day": 8,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 365.6,
+          "rustMs": 49.4,
+          "speedup": 7.4,
+          "measurements": {
+            "javascript": [
+              365.4,
+              376.9,
+              365.6,
+              306.7,
+              381
+            ],
+            "rust": [
+              49.4,
+              49.5,
+              48.6,
+              48.6,
+              54.7
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "Opulence treasure",
+          "day": 14,
+          "maxDays": 20,
+          "candidates": 4,
+          "rounds": 64,
+          "javascriptMs": 785.4,
+          "rustMs": 128.8,
+          "speedup": 6.1,
+          "measurements": {
+            "javascript": [
+              780.6,
+              800.3,
+              732.1,
+              785.4,
+              843.7
+            ],
+            "rust": [
+              124.7,
+              123,
+              141.8,
+              129.6,
+              128.8
+            ]
+          },
+          "sampleParity": true
+        }
+      ],
+      "memoryBytes": 3080192,
+      "rawSampleAndRankingParity": true,
+      "promotionParity": true,
+      "gameInput": false,
+      "limitations": "Warm single-worker solver timings including initialization, slices, JSON boundary and summary; complete remaining-game horizon. Synthetic positions, alternating order. Excludes capture, screen settling, OCR, cold WASM compilation and parallel-worker scheduling. Background machine load is uncontrolled; no real-game profit claim."
+    },
+    "node": {
+      "node": "v22.16.0",
+      "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+      "checkedAt": "2026-10-23T05:47:00.897Z",
+      "rounds": 64,
+      "repeats": 5,
+      "fixtures": [
+        {
+          "name": "day-1 instrument offer",
+          "day": 1,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 601.28,
+          "rustMs": 89.53,
+          "speedup": 6.72,
+          "measurements": {
+            "javascript": [
+              766.03,
+              665.29,
+              520.62,
+              601.28,
+              572.26
+            ],
+            "rust": [
+              106.05,
+              63.38,
+              89.53,
+              83.36,
+              94.65
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "day-1 patrol",
+          "day": 1,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 423.81,
+          "rustMs": 61.32,
+          "speedup": 6.91,
+          "measurements": {
+            "javascript": [
+              503,
+              496.09,
+              423.81,
+              390.91,
+              410.39
+            ],
+            "rust": [
+              80.78,
+              56.97,
+              61.32,
+              66.68,
+              59.36
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "populated tools",
+          "day": 8,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 1498.78,
+          "rustMs": 185.01,
+          "speedup": 8.1,
+          "measurements": {
+            "javascript": [
+              1502.84,
+              1303.53,
+              1498.78,
+              1460.16,
+              1632.38
+            ],
+            "rust": [
+              185.01,
+              200.96,
+              214.86,
+              180.62,
+              153.22
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "Cage Fight",
+          "day": 8,
+          "maxDays": 20,
+          "candidates": 3,
+          "rounds": 64,
+          "javascriptMs": 506.68,
+          "rustMs": 50.6,
+          "speedup": 10.01,
+          "measurements": {
+            "javascript": [
+              566.2,
+              506.68,
+              518.66,
+              432.98,
+              471.57
+            ],
+            "rust": [
+              51.42,
+              55.32,
+              50.6,
+              49.67,
+              44.83
+            ]
+          },
+          "sampleParity": true
+        },
+        {
+          "name": "Opulence treasure",
+          "day": 14,
+          "maxDays": 20,
+          "candidates": 4,
+          "rounds": 64,
+          "javascriptMs": 1101.62,
+          "rustMs": 128.32,
+          "speedup": 8.58,
+          "measurements": {
+            "javascript": [
+              1050.61,
+              1279.14,
+              1060.2,
+              1101.62,
+              1327.08
+            ],
+            "rust": [
+              116.13,
+              122.81,
+              136.16,
+              128.32,
+              169.06
+            ]
+          },
+          "sampleParity": true
+        }
+      ],
+      "memoryBytes": 3080192,
+      "rawSampleAndRankingParity": true,
+      "promotionParity": true,
+      "gameInput": false,
+      "limitations": "Warm single-worker solver timings including initialization, slices, JSON boundary and summary; complete remaining-game horizon. Synthetic positions, alternating order. Excludes capture, screen settling, OCR, cold WASM compilation and parallel-worker scheduling. Background machine load is uncontrolled; no real-game profit claim."
+    }
+  },
+  "quality": {
+    "checkedAt": "2026-10-23T05:45:35.075Z",
+    "referenceCommit": "72d284dd7e56a28f505903b68e3abc82f5427dd2",
+    "games": 16384,
+    "legacyJavaScriptEquivalenceGames": 256,
+    "changedPolicy": "Fanged Guillotine lower-tier Wolf meals included in exact chain evaluation",
+    "exactRegression": {
+      "previousValue": 3,
+      "correctedValue": 6.75,
+      "expectedBites": 1.25,
+      "nativeMatches": true
+    },
+    "results": [
+      {
+        "tools": [],
+        "old": {
+          "n": 4096,
+          "mean": 2.98046875,
+          "ci95": 0.060581572374704504
+        },
+        "corrected": {
+          "n": 4096,
+          "mean": 2.9814453125,
+          "ci95": 0.060559172762843984
+        },
+        "pairedDifference": {
+          "n": 4096,
+          "mean": 0.0009765625,
+          "ci95": 0.0013532813072828919
+        },
+        "oldCapped": 60,
+        "correctedCapped": 60
+      },
+      {
+        "tools": [
+          "guillotine"
+        ],
+        "old": {
+          "n": 4096,
+          "mean": 3.34521484375,
+          "ci95": 0.060765461513937705
+        },
+        "corrected": {
+          "n": 4096,
+          "mean": 3.378173828125,
+          "ci95": 0.06007430960801853
+        },
+        "pairedDifference": {
+          "n": 4096,
+          "mean": 0.032958984375,
+          "ci95": 0.04462956531021399
+        },
+        "oldCapped": 67,
+        "correctedCapped": 70
+      },
+      {
+        "tools": [
+          "guillotine",
+          "saw",
+          "whip"
+        ],
+        "old": {
+          "n": 4096,
+          "mean": 4.250732421875,
+          "ci95": 0.05662462940635678
+        },
+        "corrected": {
+          "n": 4096,
+          "mean": 4.303466796875,
+          "ci95": 0.05631698430106131
+        },
+        "pairedDifference": {
+          "n": 4096,
+          "mean": 0.052734375,
+          "ci95": 0.03891077598811751
+        },
+        "oldCapped": 40,
+        "correctedCapped": 39
+      },
+      {
+        "tools": [
+          "guillotine",
+          "crown",
+          "skewer"
+        ],
+        "old": {
+          "n": 4096,
+          "mean": 6.553466796875,
+          "ci95": 0.05902642130893156
+        },
+        "corrected": {
+          "n": 4096,
+          "mean": 6.585205078125,
+          "ci95": 0.05831197156776859
+        },
+        "pairedDifference": {
+          "n": 4096,
+          "mean": 0.03173828125,
+          "ci95": 0.04134579001933681
+        },
+        "oldCapped": 369,
+        "correctedCapped": 378
+      }
+    ],
+    "limitations": "Paired seeded synthetic complete runs of the continuation policy, not full Monte Carlo decisions at every turn. Confidence intervals use paired differences and are descriptive across several tool sets. This fixes rule-model consistency; real-game profit/hour is not measured.",
+    "gameInput": false
+  },
+  "portable": {
+    "version": "0.2.19-local.26",
+    "executable": "Tartarus-Optimized-Portable-0.2.19-local.26-x64.exe",
+    "sha256": "aa19fd091cac7a812391cb714d488b9342f2d5184983a266deb3a67293b38b56",
+    "checkedAt": "2026-10-23T06:04:46.447Z",
+    "bootMs": 4807,
+    "text": "TARTARUS 12345",
+    "ocrMs": 763,
+    "agreed": false,
+    "rustSampleParity": true,
+    "rustRollouts": 8,
+    "externalHttpBlocked": true,
+    "originalInstallUnavailable": true,
+    "occupiedPortIndependent": true,
+    "gameInput": false
+  },
+  "limitations": "This ports the calculation engine/continuation policy, not the Electron interface. Renderer summaries and labels remain JS. Timings are warm synthetic single-worker calculations with uncontrolled background load, not whole-move latency or profit/hour. Strategy change is measured separately from language parity. No game input."
+}

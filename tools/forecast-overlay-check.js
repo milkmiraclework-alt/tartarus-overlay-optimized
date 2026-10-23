@@ -211,6 +211,7 @@ module.exports = async function checkForecast() {
     window.TartarusDesktop.setConsent({ withdrawn: true });
     await until(() => !window.TartarusCapture.agreed());
     check(!A.forecastInfo().running && !A.forecastInfo().planning, 'Disabling capture left speculative work running');
+    check(trace.raw.length > 0 && trace.raw.every((m) => m.backend === 'rust'), 'Forecast integration silently used JavaScript instead of Rust');
     return { readyMs: Math.round(ready.elapsed), secondReadyMs: Math.round(deep.elapsed), coldMs: Math.round(coldMs), readyMove: expected, resumedRounds: 1600, rollingHorizon: true, sharedMenus: 2, suspendedWorkers: living.size, info: A.forecastInfo() };
   } finally { trace.reading = null; window.Worker = OriginalWorker; }
 };

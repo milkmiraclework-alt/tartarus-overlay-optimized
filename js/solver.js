@@ -18,6 +18,7 @@
   const RAT = BEASTS.indexOf('rat');
   const LION = BEASTS.indexOf('lion');
   const MAMMOTH = BEASTS.indexOf('mammoth');
+  const WOLF = BEASTS.indexOf('wolf');
   // The day's swap is still open: a day has a devour or a swap, not both.
   // (An engine cached from before that rule has no canSwapNow.)
   const canSwapNow = (st) => (T.canSwapNow ? T.canSwapNow(st) : st.used.swap < st.params.swapsPerDay);
@@ -215,6 +216,7 @@
       skewer,
       crown,
       maul,
+      guillotine: has(st, 'guillotine'),
       collar: has(st, 'collar'),
       revenge: has(st, 'revenge') && sealed > 0,
       axeDoors: has(st, 'axe') ? Math.min(2, sealed) : 0,
@@ -265,7 +267,7 @@
     // boards with branching chain rules, where repeated subproblems dominate.
     if (ctx.chainCache && !(board.length >= 4 && (ctx.fight || ctx.revenge || ctx.saw || ctx.whip || ctx.collar))) ctx.chainCache = null;
     if (ctx.chainCache) {
-      const mask = (ctx.saw ? 1 : 0) | (ctx.whip ? 2 : 0) | (ctx.muzzle ? 4 : 0) | (ctx.skewer ? 8 : 0) | (ctx.crown ? 16 : 0) | (ctx.maul ? 32 : 0) | (ctx.collar ? 64 : 0) | (ctx.revenge ? 128 : 0) | (ctx.fight ? 256 : 0) | (ctx.chainStop ? 512 : 0);
+      const mask = (ctx.saw ? 1 : 0) | (ctx.whip ? 2 : 0) | (ctx.muzzle ? 4 : 0) | (ctx.skewer ? 8 : 0) | (ctx.crown ? 16 : 0) | (ctx.maul ? 32 : 0) | (ctx.collar ? 64 : 0) | (ctx.revenge ? 128 : 0) | (ctx.fight ? 256 : 0) | (ctx.chainStop ? 512 : 0) | (ctx.guillotine ? 1024 : 0);
       const key = mask + ':' + (Object.is(R, -0) ? '-0' : R);
       let memo = ctx.chainCache.tables.get(key);
       if (!memo) {
@@ -327,19 +329,19 @@
   function feed(ctx, t, b, comp, crowd) {
     // Most chains end without a meal. No memo key is needed for that leaf;
     // only Cage Fight and the Maul can look beyond the eater's own tier.
-    if (!ctx.fight && !(ctx.maul && b === MAMMOTH)) {
+    if (!ctx.fight && !(ctx.maul && b === MAMMOTH) && !(ctx.guillotine && b === WOLF)) {
       let meal = false;
       for (const f of ctx.eatsAt(t)[b]) if (comp[t * 4 + f]) { meal = true; break; }
       if (!meal) return ctx.v[t];
     }
     let key = `${t}${b}${ctx.muzzle ? `m${crowd}` : ''}`;
-    for (let i = ctx.fight ? 0 : t * 4; i < 20; i++) key += String.fromCharCode(48 + comp[i]);
+    for (let i = ctx.fight || ctx.guillotine ? 0 : t * 4; i < 20; i++) key += String.fromCharCode(48 + comp[i]);
     const hit = ctx.memo.get(key);
     if (hit !== undefined) { if (ctx.chainCache) ctx.chainCache.hits++; return hit; }
     if (ctx.chainCache) ctx.chainCache.misses++;
     let out = -Infinity;
     // Under Cage Fight, countered meals of a lower rarity too.
-    for (let mt = ctx.fight ? 0 : t; mt <= topMeal(ctx, t, b); mt++) {
+    for (let mt = ctx.fight || (ctx.guillotine && b === WOLF) ? 0 : t; mt <= topMeal(ctx, t, b); mt++) {
       for (const f of (mt !== t ? ctx.countersAt(t) : ctx.eatsAt(t))[b]) {
         if (!comp[mt * 4 + f]) continue;
         comp[mt * 4 + f] -= 1;
@@ -395,7 +397,7 @@
   // The best first meal for an eater of this tier and beast, by expected value.
   function bestMeal(ctx, tier, beast, comp, crowd) {
     let best = { value: -Infinity, meal: -1 };
-    for (let mt = ctx.fight ? 0 : tier; mt <= topMeal(ctx, tier, beast); mt++) {
+    for (let mt = ctx.fight || (ctx.guillotine && beast === WOLF) ? 0 : tier; mt <= topMeal(ctx, tier, beast); mt++) {
       for (const f of (mt !== tier ? ctx.countersAt(tier) : ctx.eatsAt(tier))[beast]) {
         if (!comp[mt * 4 + f]) continue;
         const value = devourDelta(ctx, tier, beast, f, false, comp, crowd, false, mt);
@@ -434,11 +436,11 @@
     };
     const eat = (t, b) => {
       let key = `${t}${b}`;
-      for (let i = ctx.fight ? 0 : t * 4; i < 20; i++) key += String.fromCharCode(48 + comp[i]);
+      for (let i = ctx.fight || ctx.guillotine ? 0 : t * 4; i < 20; i++) key += String.fromCharCode(48 + comp[i]);
       if (memo.has(key)) return memo.get(key);
       // The player picks the meal with the best odds (then more bites).
       let out = null;
-      for (let mt = ctx.fight ? 0 : t; mt <= topMeal(ctx, t, b); mt++) {
+      for (let mt = ctx.fight || (ctx.guillotine && b === WOLF) ? 0 : t; mt <= topMeal(ctx, t, b); mt++) {
         for (const f of (mt !== t ? ctx.countersAt(t) : ctx.eatsAt(t))[b]) {
           if (!comp[mt * 4 + f]) continue;
           comp[mt * 4 + f] -= 1;

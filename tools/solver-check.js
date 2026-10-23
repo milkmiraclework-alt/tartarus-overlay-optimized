@@ -74,7 +74,9 @@ const fixtures = [
 
 function makeState(fixture, seed) {
   const st = T.newGame({ ...fixture, seed: `PERF-${seed}` });
-  for (const tool of fixture.tools || (fixture.tool ? [fixture.tool] : [])) T.addTool(st, tool);
+  const held = fixture.tools || (fixture.tool ? [fixture.tool] : []);
+  if (held.length) st.pending = [];
+  for (const tool of held) assert.ok(T.addTool(st, tool).ok, 'Fixture failed to add ' + tool);
   freeze(st.params);
   if (st.challenge) freeze(st.challenge.contracts);
   return st;

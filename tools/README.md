@@ -1267,3 +1267,54 @@ evaluation and complete playout batches together, returning the existing
 paired raw samples. No native solver or measured native speedup is included
 in local.25; rules, RNG streams, sample values, rankings, cancellation and
 forecast promotion need parity checks before replacing the JavaScript path.
+
+## Rust calculation backend (local.26)
+
+`native/tartarus` implements the rules, compact state, complete playouts,
+continuation policy, chain math, offers/gifts and predictions in Rust. The
+worker loads the versioned `js/solver-core.wasm` during capture/reader startup.
+It retains job and RNG state across slices, pause and promotion. Only initial
+state and new samples cross the JSON boundary. Renderer summaries/labels stay
+in JS; the complete-budget JS reference also remains a compatibility fallback.
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-rust-solver.ps1 -Native
+node tools/rust-solver-manifest.js
+node tools/rust-solver-check.js --wasm
+node tools/rust-solver-check.js
+node tools/rust-worker-check.js
+node tools/rust-solver-quality.js
+node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe" --rust-bench
+```
+
+The build fingerprints Rust/data sources and the binary; packaging rejects a
+stale module. Differential checks assert actual fixture setup, all seeded
+decisions/actions, state/RNG, alternate actions and raw Monte Carlo samples.
+Analyzer-only restrictions, unknown events/doors and reroll cards are included.
+The worker check uses the actual WASM and covers pause during cold load,
+promotion without resetting the original seed, replacement and cancellation.
+
+The quality audit recreates the frozen `72d284d` JS reference from Git when
+needed (or accepts `--reference DIR`). A diagnostic legacy policy in Rust is
+checked against that JS before comparing 4,096 paired seeds per tool set.
+`--games-per-set N` and `--quick` support shorter diagnostic runs. It isolates
+the Guillotine chain correction from the language port. Reported confidence
+intervals concern simulated continuation policies, not real-game profit.
+
+`rust-solver-browser-check.js` runs the same generated-state benchmark inside
+the real analyzer renderer; `rust-solver-bench.js` is its Node counterpart.
+Both alternate implementations, keep complete remaining-game horizons and
+require exact samples/rankings, including a partially promoted patrol family.
+The Electron report is the distribution timing reference.
+
+Standalone staging excludes the web simulator/guides, uploader/sharing and
+web polling. Direct capture no longer starts browser Follow discovery/status
+polling, and the author's binary updater dependency is removed. Manual board
+correction, local diagnostics, settings, full-budget cache and read-only author
+source update notices are retained.
+
+`node tools/desktop-settings-check.js` exercises the production settings block
+with in-memory legacy/restarted/test/debug profiles. The inherited recording
+default is disabled once, explicit later opt-in persists, unrelated settings
+are retained, and disabled recording never scans/prunes historical records.
+No real user profile or startup setting is touched by this check.

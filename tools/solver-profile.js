@@ -25,7 +25,8 @@ function fixtures() {
   const result = [];
   for (const tools of [[], ['maul', 'crown', 'skewer'], ['saw', 'whip', 'collar', 'revenge']]) {
     const st = T.newGame({ seed: 'CPU-PROFILE-' + tools.join('-') });
-    for (const tool of tools) T.addTool(st, tool);
+    if (tools.length) st.pending = [];
+    for (const tool of tools) assert.ok(T.addTool(st, tool).ok, 'Profile fixture failed to add ' + tool);
     const random = S.rng32(23), seen = new Set();
     let guard = 0;
     while (st.phase !== 'ended') {

@@ -22,7 +22,8 @@
   // a fresh run at that offer, with the advice on which to take. Only how
   // the reading went goes back to follow.html. Nothing is sent anywhere
   // else.
-  const channel = new BroadcastChannel('tartarus-follow');
+  const direct = !!window.TartarusDesktop?.fast;
+  const channel = direct ? null : new BroadcastChannel('tartarus-follow');
   const me = Math.random().toString(36).slice(2);
   let focusedAt = document.hasFocus() ? Date.now() : 0;
   let newest = 0;
@@ -33,13 +34,13 @@
   let giftsAt = 0; // when the Warden's Treasure last showed, or its counts last moved
   let giftsSeen = '';
   const say = (m) => {
-    if (C.agreed()) channel.postMessage(Object.assign({ id: me }, m));
+    if (C.agreed()) channel?.postMessage(Object.assign({ id: me }, m));
   };
   // pixels: pictures may come as raw pixels rather than a PNG.
   const announce = () => say({ type: 'here', focusedAt, pixels: true });
 
   async function onPicture(m, reply) {
-    const answer = reply || ((patch) => channel.postMessage(Object.assign({ type: 'read', to: m.from, id: m.id }, patch)));
+    const answer = reply || ((patch) => channel?.postMessage(Object.assign({ type: 'read', to: m.from, id: m.id }, patch)));
     const reuse = !!(reply && window.TartarusDesktop && window.TartarusDesktop.fast);
     const before = lastKind;
     lastKind = m.kind;
@@ -255,6 +256,10 @@
     });
   }
 
+  // The local overlay delivers frames directly. Browser discovery, status
+  // polling and focus broadcasts only serve the separate web Follow page.
+  window.TartarusAuto = { receive: onPicture, cancel: () => { newest++; } };
+  if (direct) return;
   channel.onmessage = (e) => {
     const m = e.data || {};
     if (!C.agreed()) return;

@@ -17,7 +17,7 @@ const { create } = require('../desktop/lib/bundled-site.js');
     const html = await (await request('analyze.html')).text();
     assert.ok(html.includes('TARTARUS_BUNDLED_OCR'));
     assert.ok(!html.includes('fonts.googleapis.com'));
-    for (const name of ['js/scan-kernels.wasm', 'vendor/ocr/data/eng.traineddata.gz', 'desktop/lib/settings.js']) {
+    for (const name of ['js/scan-kernels.wasm', 'js/solver-core.wasm', 'vendor/ocr/data/eng.traineddata.gz', 'desktop/lib/settings.js']) {
       const response = await request(name);
       assert.equal(response.status, 200);
       const bytes = Buffer.from(await response.arrayBuffer());
@@ -33,6 +33,9 @@ const { create } = require('../desktop/lib/bundled-site.js');
     assert.equal((await site.handle(new Request('http://other.example/analyze.html'))).status, 404);
     assert.equal(await (await fetch(url)).text(), 'UNRELATED SERVER', 'The unrelated listener was changed');
     assert.equal((await request('analyze.html')).status, 200, 'An occupied port prevented internal asset reads');
+    for (const name of ['js/live.js', 'js/report.js', 'js/update.js', 'js/canvas-ui.js', 'js/ui.js', 'js/guide-data.js']) {
+      assert.equal((await request(name)).status, 404, 'Unused web feature still bundled: ' + name);
+    }
     console.log('PASS: bundled analyzer/OCR/WASM hashes and MIME types; only packaged assets served, HEAD/POST handling, traversal/origin rejection, and independence from an occupied port.');
   } finally { sentinel.closeAllConnections(); await new Promise((resolve) => sentinel.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

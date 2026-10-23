@@ -297,6 +297,16 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       })()`);
       console.log('PASS: standalone native libraries and bundled OCR work with missing original-install paths and all external HTTP requests blocked: '+JSON.stringify(offlineOCR));
     }
+    if (process.argv.includes('--rust-bench')) {
+      const checkRust = require('./rust-solver-browser-check.js');
+      const timing = await evaluate(`(${checkRust.toString()})()`);
+      const report = { electron: require('../desktop/node_modules/electron/package.json').version,
+        cpu: require('node:os').cpus()[0].model, ...timing };
+      const dir = path.join(ROOT, 'sandbox/rust-solver-bench'); fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'electron-report.json'), JSON.stringify(report, null, 2) + '\n');
+      console.log('PASS: actual Electron Rust/WASM samples, rankings, promotion and alternating benchmark: ' + JSON.stringify(report));
+      return;
+    }
     if (process.argv.includes('--contracts-only')) {
       const overlayTarget = targets.find(t => t.url.endsWith('/overlay.html'));
       assert.ok(overlayTarget, 'Overlay renderer was not created');
@@ -359,7 +369,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
         await pause(25);
       }
       const after = await evaluate(`(${checkInstruments.toString()})(true)`);
-      console.log(`PASS: physical overlay click across 3 progress updates, unchanged solver cache and 8 conflicting/missing/extra-icon frames across reload: ${JSON.stringify({ before, after })}`);
+      console.log(`PASS: physical overlay click across 3 progress updates, unchanged solver cache and 10 conflicting/missing/growing-slot frames across reload: ${JSON.stringify({ before, after })}`);
       return;
     }
     if (process.argv.includes('--panel-manifest')) {
@@ -589,7 +599,8 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     await overlay.evaluate('Overlay.command("board");true');
     for(let i=0;i<50 && await evaluate('TartarusAnalyzer.desktopSnapshot().background');i++)await pause(25);
     assert.equal(await evaluate('document.getElementById("az-res-move").textContent'), snapshot.move);
-    console.log('PASS: full rollout budget, direct overlay advice, stale-advice clearing and on-demand board correction.');
+    if (standalone) assert.equal(await evaluate('TartarusAnalyzer.desktopSnapshot().simulationBackend'), 'rust', 'Packaged advice silently used the reference JavaScript backend');
+    console.log('PASS: full rollout budget, Rust backend, direct overlay advice, stale-advice clearing and on-demand board correction.');
     const previousOptions=snapshot.options;
     await evaluate('TartarusAnalyzer.invalidate();TartarusAnalyzer.askCached();true');
     const cached=await evaluate('TartarusAnalyzer.desktopSnapshot()');

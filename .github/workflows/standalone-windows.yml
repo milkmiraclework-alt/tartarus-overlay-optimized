@@ -24,6 +24,7 @@ jobs:
         run: |
           node tools/bundled-site-check.js
           node tools/scan-kernel-check.js
+          node tools/rust-solver-check.js --wasm
       - uses: actions/upload-artifact@v4
         with:
           name: Tartarus-Optimized-Windows-x64

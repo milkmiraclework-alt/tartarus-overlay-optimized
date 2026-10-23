@@ -511,7 +511,7 @@
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
   // Bump for rule/strategy imports, retain across compatible UI-only fixes.
-  const SOLVER_CACHE_REVISION = '?v=20261021perf21';
+  const SOLVER_CACHE_REVISION = '?v=20261023rust26';
   const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=c6896f2:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
@@ -671,6 +671,7 @@
     return true;
   }
   function solverMessage(k, m) {
+    if (m.backend && m.id === solver.id) solver.backend = m.backend;
     if (m.predictions) receivePredictions(m);
     else if (forecast.active && m.id === forecast.active.id) receiveForecast(k, m);
     else if (m.id === solver.forecastAlias?.from && solver.forecastAlias.to === solver.id) {
@@ -828,7 +829,7 @@
             solver.workers = null;
             solver.shares = null;
             solver.failed = true;
-            if (solver.st) startCheck(solver.id, solver.st, 300);
+            if (solver.st) startCheck(solver.id, solver.st, solver.target);
           };
         }
       } catch (e) {
@@ -872,7 +873,7 @@
       solver.workers.forEach((w, k) => w.postMessage({ id, state, rollouts: solver.shares[k].target, stream: k, raw: true }));
       return;
     }
-    const job = S.solve(state, { rollouts: Math.min(rollouts, 300), seed: (id * 7919 + 1) >>> 0 });
+    const job = S.solve(state, { rollouts, seed: (id * 7919 + 1) >>> 0 });
     const tick = () => {
       if (id !== solver.id) return;
       solver.result = job.step(12);
@@ -1497,6 +1498,7 @@
     return {
       background: desktopHidden(),
       cacheHit: solver.cached,
+      simulationBackend: solver.backend || null,
       forecastHit: solver.forecastHit, forecastResumed: solver.forecastResumed,
       has, stale, working, move: rec ? rec.label : '', why: rec ? rec.why || '' : '',
       progress: working ? Math.round(100 * progress()) : null,
@@ -2983,7 +2985,12 @@
         } else notes.push(`Your instruments show one more than before, from the offer of ${offer.map((id) => T.toolName(id)).join(', ')}: set which you took under Torture Instrument.`);
       }
       const confirmed = m.toolsConfirmed;
-      if (confirmed && (confirmed.tools !== toolSet(out.map((t) => t.sim)) || slots > confirmed.slots)) m.toolsConfirmed = null;
+      // A manual confirmation describes the actual held set, not how many
+      // icons a noisy frame happened to segment. Tooltips, animation and
+      // neighbouring badges can produce extra slots on later screenshots.
+      // Only a changed held set (including a pick from an observed offer)
+      // invalidates it. New offers/runs and explicit edits clear it too.
+      if (confirmed && confirmed.tools !== toolSet(out.map((t) => t.sim))) m.toolsConfirmed = null;
       const off = read.filter((t) => t.sim && t.conf >= TOOL_SURE && !has(t.sim));
       if (!m.toolsConfirmed) {
         if (slots > out.length) m.toolsToConfirm = `Your panel shows ${T.plural(slots, 'instrument')}, and the analyzer has ${out.length}: ${out.map((t) => t.name).join(', ') || 'none'}. Set the ones you hold, then press These are right.`;

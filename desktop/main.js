@@ -38,7 +38,7 @@ const flag = (name) => process.argv.includes(`--${name}`);
 const BUNDLED_ROOT = path.join(process.resourcesPath, 'site');
 const STANDALONE = app.isPackaged && fs.existsSync(path.join(BUNDLED_ROOT, 'bundle.json'));
 const OPTIMIZED = require('./package.json').name === 'tartarus-overlay-optimized';
-const FAST = flag('fast') || STANDALONE;
+const FAST = flag('fast') || STANDALONE || OPTIMIZED;
 app.on('web-contents-created', (_, contents) => contents.setAudioMuted(true));
 const localDependency = (name) => {
   try { return require(name); } catch (error) {
@@ -48,7 +48,7 @@ const localDependency = (name) => {
 };
 
 const LIVE_SITE = 'https://blahdot3h.github.io/tartarus-simulator/';
-let SITE = STANDALONE ? 'http://localhost:8090/' : arg('site') || process.env.TARTARUS_SITE || LIVE_SITE;
+let SITE = STANDALONE ? 'http://localhost:8090/' : arg('site') || process.env.TARTARUS_SITE || (OPTIMIZED ? 'http://localhost:8090/' : LIVE_SITE);
 if (!SITE.endsWith('/')) SITE += '/';
 let SITE_URL = new URL(SITE);
 // #region game-title
@@ -92,7 +92,7 @@ const settings = Object.assign({
   hideFromCaptures: true, // kept out of screenshots, recordings and the shared window
   hideBehind: false, // hidden while another window is in front of the game
   collapsed: false, // the overlay folded to a thin bar ("–" on it)
-  record: true, // keep a record of each board and advice, for testing
+  record: !OPTIMIZED, // optional diagnostics; optimized play does not record every board
   recordLimitMB: 1024, // debug build (--dev): the record's room on disk, pictures included
   recordRuns: 5, // normal build: the runs the record keeps
   consent: null, // { version, at }: the player agreed on follow.html in the app, to that version
@@ -121,6 +121,15 @@ function flushSettings() {
   } catch (e) {
     // Remains in memory when the settings file cannot be written.
   }
+}
+
+// Older profiles inherited the author's record=true default. Disable that
+// background work once on upgrade; a later explicit user opt-in is retained.
+// Test/debug profiles can still request recording for their controlled checks.
+if (OPTIMIZED && !TEST && !DEV && settings.optimizedRecordPolicy !== 1) {
+  settings.record = false;
+  settings.optimizedRecordPolicy = 1;
+  saveSettings();
 }
 
 // ---------- The debug log ----------
@@ -483,6 +492,7 @@ function dirSize(dir) {
 }
 // Over the limit, the oldest runs go, never the one being written.
 function pruneRecords() {
+  if (!settings.record) return;
   try {
     const sizes = fs.readdirSync(RECORDS).filter((d) => SESSION_NAME.test(d)).sort().map((d) => ({ d, size: dirSize(path.join(RECORDS, d)) }));
     let total = sizes.reduce((sum, s) => sum + s.size, 0);
@@ -1182,7 +1192,7 @@ function command(cmd) {
     case 'tools-ok':
     case 'treasure-now':
       return send('analyzer', 'command', cmd);
-    case 'debug-report': return debugReport();
+    case 'debug-report': return OPTIMIZED ? shell.openPath(LOG_FILE) : debugReport();
     case 'enable-log':
       // The Auto Screenshot Mode page's box on turning on the game's log.
       show('follow');
@@ -1204,7 +1214,7 @@ function command(cmd) {
     case 'review': return showReview();
     case 'pick-log': return pickLog();
     case 'reload': return reloadSite();
-    case 'restart': return updater && updater.quitAndInstall();
+    case 'restart': app.relaunch(); return app.quit();
     case 'upstream-update': if (upstreamUpdate) shell.openExternal(upstreamUpdate.url); return;
     default: return undefined;
   }
@@ -1286,29 +1296,6 @@ function reloadSite() {
   pushShell();
 }
 
-// The app itself updates from the GitHub releases, when it's installed.
-let updater = null;
-function startUpdater() {
-  if (!app.isPackaged || TEST) return;
-  try {
-    updater = require('electron-updater').autoUpdater;
-  } catch (e) {
-    return;
-  }
-  updater.autoDownload = true;
-  updater.autoInstallOnAppQuit = true;
-  updater.on('update-downloaded', (info) => {
-    note('app update downloaded:', info.version);
-    appUpdate = info.version;
-    pushShell();
-    rebuildMenu();
-  });
-  updater.on('error', (e) => note('app update check failed:', String((e && e.message) || e).slice(0, 300)));
-  const check = () => updater.checkForUpdates().catch(() => {});
-  check();
-  setInterval(check, 6 * 3600 * 1000);
-}
-
 // This checkout carries local changes: notify about new author commits,
 // while leaving integration and the local files under the user's control.
 function startUpstreamCheck() {
@@ -1351,11 +1338,11 @@ function rebuildMenu() {
     { type: 'separator' },
     { label: 'Start with Windows', type: 'checkbox', checked: login, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
     { label: siteUpdate ? 'Reload the site (an update is ready)' : 'Reload the site', click: () => reloadSite() },
-    appUpdate ? { label: `Restart to update the app (${appUpdate})`, click: () => command('restart') } : { label: `Version ${app.getVersion()}${DEV ? ' (debug)' : ''}`, enabled: false },
+    { label: `Version ${app.getVersion()}${DEV ? ' (debug)' : ''}`, enabled: false },
     ...(upstreamUpdate ? [{ label: 'Author updates available for the local overlay', click: () => command('upstream-update') }] : []),
     { label: 'Record every board and advice (testing)', type: 'checkbox', checked: settings.record, click: (i) => { settings.record = i.checked; saveSettings(); if (FAST) publishFastConfig(); } },
     { label: `Review the record… (${BIG_RECORD ? `${Math.round(recordBytes / 1048576)} MB of ${Math.round(recordLimit() / 1048576)} MB` : `the last ${keepRuns()} runs`})`, click: () => showReview() },
-    { label: 'Send a debug report…', click: () => debugReport() },
+    ...(!OPTIMIZED ? [{ label: 'Send a debug report…', click: () => debugReport() }] : []),
     { label: 'Open the debug log', click: () => shell.openPath(LOG_FILE) },
     ...(DEV ? [{
       label: 'Developer tools',
@@ -1465,7 +1452,6 @@ if (!app.requestSingleInstanceLock()) {
     lookForGame();
     setInterval(updateOverlay, 250);
     setInterval(checkSite, 10 * 60 * 1000);
-    if (!FAST) startUpdater();
     startUpstreamCheck();
     if (!TEST && !game.running) {
       tray.displayBalloon({ title: 'Tartarus Overlay is running', content: 'The advice shows over Torchlight: Infinite while you play. The tray icon has the board analyzer and settings.', iconType: 'info' });

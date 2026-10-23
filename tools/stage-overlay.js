@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'desktop/dist/bundled-site');
 const DEPS = path.join(ROOT, 'desktop/node_modules');
 const metadata = require('../desktop/package.json');
+const rust = require('./rust-solver-manifest.js');
 const assets = new Map();
 function put(name, bytes) {
   if (name.includes('..') || path.isAbsolute(name)) throw new Error('Invalid bundled asset');
@@ -29,11 +30,18 @@ html = html.replace(/<link[^>]+https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*
 html = html.replace('</head>', `<script>window.TARTARUS_BUNDLED_OCR=${JSON.stringify(ocr)};</script>\n</head>`);
 // Navigation to optional web guides opens the author's public pages. The
 // overlay, correction UI and simulation itself always stay in the bundle.
-html = html.replace('href="./"', 'href="https://blahdot3h.github.io/tartarus-simulator/"')
-  .replace('href="strategy.html"', 'href="https://blahdot3h.github.io/tartarus-simulator/strategy.html"');
+html = html.replace(/<nav class="az-nav"[\s\S]*?<\/nav>/, '')
+  .replace(/<script src="js\/(?:live|report|update)\.js[^\"]*"><\/script>\s*/g, '')
+  .replace(/<button\b[^>]*\bdata-report="[^\"]*"[^>]*>[\s\S]*?<\/button>/g, '');
 put('analyze.html', html);
 file(path.join(ROOT, 'css/style.css'), 'css/style.css');
-tree(path.join(ROOT, 'js'), 'js', (name) => /\.(js|wasm)$/.test(name));
+// Only the overlay/correction dependencies; no web simulator, training UI,
+// guide data, telemetry/report uploader or web update polling.
+const scripts = ['engine.js', 'board.js', 'tool-combos.js', 'solver.js', 'capture.js', 'solver-cache.js',
+  'solver-forecast.js', 'tips.js', 'analyze.js', 'auto.js', 'frame-readiness.js', 'ready-worker.js',
+  'scan-data.js', 'pick-data.js', 'scan.js', 'scan-worker.js', 'scan-search-worker.js', 'scan-tracker.js',
+  'scan-accelerator.js', 'scan-kernels.wasm', 'solver-worker.js', 'rust-solver.js', 'solver-core.wasm'];
+for (const name of scripts) file(path.join(ROOT, 'js', name), `js/${name}`);
 tree(path.join(ROOT, 'img'), 'img');
 for (const name of ['settings.html', 'settings.js']) file(path.join(ROOT, 'desktop/lib', name), `desktop/lib/${name}`);
 for (const name of ['tesseract.min.js', 'worker.min.js', 'tesseract.min.js.LICENSE.txt', 'worker.min.js.LICENSE.txt']) {
@@ -56,6 +64,8 @@ const sourceFiles = {};
 function source(name) { sourceFiles[name] = createHash('sha256').update(fs.readFileSync(path.join(ROOT, name))).digest('hex'); }
 for (const name of ['desktop/main.js', 'desktop/preload.js', 'desktop/package.json', 'desktop/package-lock.json',
   'desktop/build/icon.png', 'analyze.html', 'css/style.css', 'tools/stage-overlay.js']) source(name);
+for (const name of Object.keys(rust.sources)) source(name);
+source('js/solver-core.build.json');
 for (const directory of ['js', 'img', 'desktop/lib']) {
   const visit = (folder) => { for (const entry of fs.readdirSync(path.join(ROOT, folder), { withFileTypes: true })) {
     const name = `${folder}/${entry.name}`; if (entry.isDirectory()) visit(name); else source(name);
