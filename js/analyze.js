@@ -824,10 +824,11 @@
         for (let k = 0; k < WORKERS; k++) {
           const worker = new Worker(`js/solver-worker.js${SCRIPT_QUERY}`);
           solver.workers.push(worker);
-          worker.onmessage = (e) => solverMessage(k, e.data);
-          worker.onerror = () => {
+          worker.onmessage = (e) => { if (solver.workers?.[k] === worker) solverMessage(k, e.data); };
+          worker.onerror = (event) => {
+            if (event?.preventDefault) event.preventDefault();
             // Fall back to this page's thread, and redo the check.
-            if (!solver.workers) return;
+            if (solver.workers?.[k] !== worker) return;
             stopForecast();
             for (const w of solver.workers) w.terminate();
             solver.workers = null;
@@ -1968,8 +1969,10 @@
     if (!FAST_DESKTOP || readyFailed) return null;
     if (readyWorker) return readyWorker;
     try {
-      readyWorker = new Worker(`js/ready-worker.js${SCRIPT_QUERY}`);
-      readyWorker.onmessage = ({ data }) => {
+      const worker = new Worker(`js/ready-worker.js${SCRIPT_QUERY}`);
+      readyWorker = worker;
+      worker.onmessage = ({ data }) => {
+        if (readyWorker !== worker) return;
         const task = readyJobs.get(data.id);
         if (task) {
           readyJobs.delete(data.id); clearTimeout(task.timer);
@@ -1977,7 +1980,7 @@
           task.resolve(!!data.ready);
         }
       };
-      readyWorker.onerror = (event) => { event.preventDefault(); stopReadyWorker(); };
+      worker.onerror = (event) => { event.preventDefault(); if (readyWorker === worker) stopReadyWorker(); };
       if (readyCalibration) readyWorker.postMessage({ calibrate: readyCalibration });
     } catch { stopReadyWorker(); }
     return readyWorker;
@@ -2271,9 +2274,11 @@
   function readerWorker() {
     if (!reader.worker && !reader.failed) {
       try {
-        reader.worker = new Worker(`js/scan-worker.js${SCRIPT_QUERY}`);
-        reader.worker.postMessage({ configure: { parallel: FAST_DESKTOP, tracking: FAST_DESKTOP } });
-        reader.worker.onmessage = (e) => {
+        const worker = new Worker(`js/scan-worker.js${SCRIPT_QUERY}`);
+        reader.worker = worker;
+        worker.postMessage({ configure: { parallel: FAST_DESKTOP, tracking: FAST_DESKTOP } });
+        worker.onmessage = (e) => {
+          if (reader.worker !== worker) { if (e.data.preview) e.data.preview.close(); return; }
           if (e.data.kind === 'pick' || e.data.kind === 'objective') {
             const answer = reader.picks.get(e.data.id);
             reader.picks.delete(e.data.id);
@@ -2297,7 +2302,10 @@
           if (queued && queued.message.id === reader.id) postBoard(queued.message, queued.transfer);
           else if (queued && queued.message.bitmap) queued.message.bitmap.close();
         };
-        reader.worker.onerror = () => {
+        worker.onerror = (event) => {
+          if (event?.preventDefault) event.preventDefault();
+          if (reader.worker !== worker) return;
+          worker.terminate();
           readyCalibration = null;
           if (readyWorker) readyWorker.postMessage({ calibrate: null });
           reader.failed = true;
@@ -3836,11 +3844,11 @@
         corner.ticket++; corner.busy = false; corner.tries = 0; corner.done = false;
         window.TartarusAnalyzer.invalidate();
         for (const worker of solver.workers || []) worker.terminate();
-        solver.workers = null; solver.shares = null; solver.meta = null; solver.forecastAlias = null;
+        solver.workers = null; solver.failed = false; solver.shares = null; solver.meta = null; solver.forecastAlias = null;
         forecast.families.clear(); forecast.ready.clear();
         reader.id++;
         if (reader.worker) reader.worker.terminate();
-        reader.worker = null; reader.boardBusy = false;
+        reader.worker = null; reader.failed = false; reader.boardBusy = false;
         if (reader.queuedBoard?.message.bitmap) reader.queuedBoard.message.bitmap.close();
         reader.queuedBoard = null;
         const pending = reader.pending; reader.pending = null;

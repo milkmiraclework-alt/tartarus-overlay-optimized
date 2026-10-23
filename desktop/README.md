@@ -1,6 +1,6 @@
 # Tartarus Optimized desktop overlay
 
-Version 0.2.20-local.28, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
+Version 0.2.20-local.29, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
 
 The Windows x64 installer and portable EXE include their own Electron, native
 capture libraries, analyzer, Rust/WASM reader and Monte Carlo core, and English
@@ -15,6 +15,14 @@ port 8090 is unaffected. --site-port=N changes only the virtual origin for
 isolated development/tests.
 
 ## Calculation and corrections
+
+Worker handlers reject messages/errors from a terminated generation. A current
+reader error terminates its worker, and leaving the mode clears reader/solver
+failure flags so re-entry can restore accelerated processing. The local.28
+solver cache namespace and all calculation budgets are retained. An actual
+packaged Electron stress check cancels imports, injects an active failure and
+delivers old errors after replacement, then requires WASM reading and a complete
+solver pool with zero workers left after suspension.
 
 Unknown day-one starting instrument offers now sample their own initial inmates
 and day-one patrol, without replacing observed boards. Prey-link Consume costs

@@ -426,6 +426,37 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       console.log(`PASS: isolated forecast integration: ${JSON.stringify(await evaluate(`(${checkForecast.toString()})()`))}`);
       return;
     }
+    if (process.argv.includes('--worker-lifecycle-only')) {
+      const framesAt = process.argv.indexOf('--frames');
+      assert.ok(framesAt >= 0, 'Lifecycle check needs a saved frame directory');
+      const folder = path.resolve(process.argv[framesAt + 1]), file = fs.readdirSync(folder).find(n => n.endsWith('.webp'));
+      assert.ok(file);
+      const url = 'data:image/webp;base64,' + fs.readFileSync(path.join(folder, file)).toString('base64');
+      const lifecycle = await evaluate(`(async()=>{
+        const A=TartarusAnalyzer,Original=Worker,created=[];let suspended=0;
+        window.Worker=class extends Original{constructor(url,...rest){super(url,...rest);this.checkUrl=String(url);created.push(this);}terminate(){this.checkTerminated=true;return super.terminate();}};
+        try{
+          for(let i=0;i<4;i++){A.prepare();A.suspend();suspended++;}
+          A.prepare();
+          const failed=created.find(w=>w.checkUrl.includes('scan-worker.js')&&!w.checkTerminated);
+          failed.onerror(new Event('error',{cancelable:true}));
+          A.suspend();suspended++;
+          const old=created.slice();A.prepare();
+          for(const worker of old)if(worker.onerror)worker.onerror(new Event('error',{cancelable:true}));
+          await new Promise(r=>setTimeout(r,100));
+          const bitmap=await createImageBitmap(await(await fetch(${JSON.stringify(url)})).blob());
+          const start=performance.now(),read=await A.readFrameDirect(bitmap),ms=Math.round(performance.now()-start);
+          const info=A.readerInfo(),pool=A.workerInfo();
+          if(!read.ok||!info?.accelerated||pool.allocated!==pool.limit)throw new Error('Reader fell back after cancelled imports: '+JSON.stringify({read,info,pool}));
+          A.suspend();
+          for(let i=0;i<100&&created.some(w=>!w.checkTerminated);i++)await new Promise(r=>setTimeout(r,10));
+          if(created.some(w=>!w.checkTerminated))throw new Error('Lifecycle left a worker allocated: '+JSON.stringify(created.filter(w=>!w.checkTerminated).map(w=>w.checkUrl)));
+          return {suspended,workers:created.length,readMs:ms,accelerated:info.accelerated,poolRecovered:pool.allocated===pool.limit,idleWorkers:0};
+        }finally{A.suspend();window.Worker=Original;}
+      })()`);
+      console.log('PASS: real Electron import cancellation, injected current-reader failure and late errors from old generations retain the accelerated reader and solver pool: '+JSON.stringify(lifecycle));
+      return;
+    }
 
     await evaluate(`(()=>{window.solverWarmCount=0;window.liveCheckWorkers=new Set();const OriginalWorker=Worker;window.Worker=class extends OriginalWorker{constructor(url,...args){super(url,...args);window.liveCheckWorkers.add(this);if(String(url).includes('solver-worker.js'))window.solverWarmCount++;}terminate(){window.liveCheckWorkers.delete(this);return super.terminate();}};})();TartarusDesktop.setConsent({version:4,at:new Date().toISOString()});true`);
     for (let i = 0; i < 100 && !await evaluate('TartarusCapture.state.log === "on"'); i++) await pause(25);

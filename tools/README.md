@@ -1393,3 +1393,18 @@ The additional independent `--sets 0,2,3 --games 128 --mc-games 2 --rollouts 400
 smaller holdout. The default baseline can be reconstructed from the local.27
 ancestor commit if the private snapshot is absent; no private frames are
 needed for these synthetic strategy checks.
+
+## Worker import/cancellation recovery (local.29)
+
+`node tools/worker-lifecycle-check.js` injects current and stale worker errors
+into the actual analyzer closures. A failed current reader is terminated,
+failure flags reset on suspension, and late messages/errors cannot touch a new
+reader, readiness worker or solver pool. Transferred stale previews are closed.
+
+`node tools/overlay-check.js --standalone <exe> --frames <saved-frame-directory>
+--worker-lifecycle-only` performs actual rapid prepare/suspend cycles during
+Electron imports, injects a current-reader failure and late old errors, then
+requires the real saved-frame read to stay accelerated and the solver pool to
+recover. It waits for asynchronous OCR cleanup and requires zero remaining
+workers after exit. This covers a real-user regression missed by warm
+saved-frame performance benchmarks. No game input or real-game capture is used.
