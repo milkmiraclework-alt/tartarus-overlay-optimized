@@ -1,11 +1,20 @@
 # Tartarus Overlay (desktop app, local only for now)
 
-The optimized local build is `0.2.18-local.18`, based on the author's source
-revision `bc528594d5017c0ce400e1e7a973f36f20b69653` (18 October 2026).
+The optimized local build is `0.2.19-local.24`, based on the author's source
+revision `3f937ec894094c24b37f2701dbe4b6ff4f480cce` (22 October 2026).
 `lib/upstream-version.json` records the imported revision: the Git branch HEAD
 can still be older while local changes are being developed. Source changes
 are checked asynchronously at startup and every six hours; a notice links to
 the author's diff without downloading or overwriting the local build.
+
+The reader now uses optional Rust/WebAssembly kernels for exact box filtering
+and board search. The checked-in `js/scan-kernels.wasm` requires no Rust install
+at runtime. Failed loading or unsupported SIMD retains the JavaScript path.
+Only the exact accepted readiness bitmap can reuse its already-read cells and
+controls; another bitmap, a different language, or a 4K resize reads normally.
+Simulation rules, rollout budgets and the persistent Monte Carlo cache revision
+are unchanged by this reader update. `tools/build-scan-kernels.ps1` rebuilds the
+binary from `tools/scan-kernels.rs` with Rust's `wasm32-unknown-unknown` target.
 
 The local.17 UI/lifecycle fixes are retained. Repeated frames pause and resume
 matching foreground jobs with all samples intact. Warm objective OCR finishes before advice starts;

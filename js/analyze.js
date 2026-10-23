@@ -1942,6 +1942,7 @@
   const reader = { worker: null, failed: false, id: 0, pending: null, image: null, result: null, reading: null, ms: 0, picks: new Map(), pickId: 0, cornerPending: null };
   let readyWorker = null, readyFailed = false, readyCalibration = null, readyId = 0;
   const readyJobs = new Map();
+  let readyFrames = new WeakMap();
   function stopReadyWorker() {
     readyFailed = true;
     if (readyWorker) readyWorker.terminate();
@@ -1956,7 +1957,11 @@
       readyWorker = new Worker(`js/ready-worker.js${SCRIPT_QUERY}`);
       readyWorker.onmessage = ({ data }) => {
         const task = readyJobs.get(data.id);
-        if (task) { readyJobs.delete(data.id); clearTimeout(task.timer); task.resolve(!!data.ready); }
+        if (task) {
+          readyJobs.delete(data.id); clearTimeout(task.timer);
+          if (data.ready && data.prepared && task.bitmap.width <= 2600) readyFrames.set(task.bitmap, data.prepared);
+          task.resolve(!!data.ready);
+        }
       };
       readyWorker.onerror = (event) => { event.preventDefault(); stopReadyWorker(); };
       if (readyCalibration) readyWorker.postMessage({ calibrate: readyCalibration });
@@ -1976,7 +1981,7 @@
       if (!readyWorker) { copy.close(); return false; }
       return await new Promise((resolve) => {
         const id = ++readyId, timer = setTimeout(stopReadyWorker, 1000);
-        readyJobs.set(id, { resolve, timer });
+        readyJobs.set(id, { resolve, timer, bitmap });
         try { readyWorker.postMessage({ id, epoch: meta.epoch, bitmap: copy }, [copy]); }
         catch { copy.close(); stopReadyWorker(); }
       });
@@ -2234,7 +2239,11 @@
           if (id !== reader.id) { scaled.close(); return; }
           postBoard({ id, bitmap: scaled }, [scaled]);
         }).catch((error) => done(null, error.message));
-      } else postBoard({ id, bitmap }, [bitmap]);
+      } else {
+        const prepared = readyFrames.get(bitmap);
+        readyFrames.delete(bitmap);
+        postBoard({ id, bitmap, prepared }, [bitmap]);
+      }
     } else if (reader.worker) {
       const copy = imageData.data.slice().buffer;
       postBoard({ id, width: imageData.width, height: imageData.height, buffer: copy }, [copy]);
@@ -3813,7 +3822,7 @@
         reader.picks.clear();
         for (const image of new Set([reader.image, reader.lastCapture])) if (image && typeof image.close === 'function') image.close();
         reader.image = null; reader.lastCapture = null; reader.result = null; reader.reading = null;
-        stopReadyWorker(); readyFailed = false; readyCalibration = null;
+        stopReadyWorker(); readyFailed = false; readyCalibration = null; readyFrames = new WeakMap();
         const previousOCR = ocr; ocr = null; ocrReady = false; ocrGeneration++;
         if (previousOCR) previousOCR.then((worker) => { if (worker) return worker.terminate(); }).catch(() => {});
       },

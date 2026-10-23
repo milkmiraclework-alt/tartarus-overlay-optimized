@@ -11,6 +11,8 @@
  * fixed frame, and every panel is found by itself, by its own text. */
 (function (root) {
   'use strict';
+  let kernels = null;
+  function setKernels(value) { kernels = value; }
 
   // ---------- Board geometry ----------
 
@@ -63,6 +65,10 @@
   // Separable box blur of radius r.
   function blur(g, w, h, r) {
     if (r < 1) return g;
+    if (kernels && g instanceof Float32Array && Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0 && g.length === w * h && Number.isInteger(r) && r <= Math.max(w, h)) {
+      try { return kernels.blur(g, w, h, r); }
+      catch { kernels = null; } // Memory limits/unsupported runtimes retain the exact JS path.
+    }
     const tmp = new Float32Array(w * h);
     const out = new Float32Array(w * h);
     const span = 2 * r + 1;
@@ -252,32 +258,6 @@
     cnorm = Math.sqrt(cnorm);
     for (let j = 0; j < cn; j++) ctv[j] /= cnorm;
     coarse.pts = keepIdx.map((i) => pts[i]);
-    const coarseScore = (pixels, xs, ys, xi, yi) => {
-      let sx = 0;
-      let sxx = 0;
-      let sxt = 0;
-      for (let j = 0; j < cn; j++) {
-        const v = pixels[ys[yi + j] + xs[xi + j]];
-        sx += v;
-        sxx += v * v;
-        sxt += v * ctv[j];
-      }
-      const varx = sxx - (sx * sx) / cn;
-      return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
-    };
-    const interiorScore = (pixels, offsets, origin) => {
-      let sx = 0;
-      let sxx = 0;
-      let sxt = 0;
-      for (let j = 0; j < cn; j++) {
-        const v = pixels[origin + offsets[j]];
-        sx += v;
-        sxx += v * v;
-        sxt += v * ctv[j];
-      }
-      const varx = sxx - (sx * sx) / cn;
-      return varx > 1e-6 ? sxt / Math.sqrt(varx) : -1;
-    };
     // The board spans at least 30% of the width, or 35% of the height: on
     // a 32:9 screen (5120x1440) only about 27% of the width (report 144).
     // The scales from 30% of the width up stay as they were (a step moved
@@ -337,19 +317,46 @@
         }
         interiorY[oy - oy0] = interior;
       }
-      let best = null;
-      for (let oy = oy0, yi = 0; oy <= oy1; oy++, yi += cn) {
-        for (let ox = ox0, xi = 0; ox <= ox1; ox++, xi += cn) {
-          // When no sample clips, one translated offset replaces two axis
-          // lookups. Verify the integer identities above, including rounding,
-          // so clipped edges and rare rounding cases use the exact fallback.
-          const sc = interiorX[ox - ox0] && interiorY[oy - oy0] ? interiorScore(lv.g, offsets, oy * lv.w + ox) : coarseScore(lv.g, xs, ys, xi, yi);
-          if (!best || sc > best.score) best = { ox, oy, score: sc };
+      if (kernels) {
+        try {
+          const found = kernels.search(lv.g, xs, ys, offsets, interiorX, interiorY, ctv, lv.w, ox0, oy0);
+          top.push({ s, tx: found.ox * lv.f, ty: found.oy * lv.f, f: lv.f, score: found.score, order: currentOrder });
+          continue;
         }
+        catch { kernels = null; }
       }
+      const best = searchPositionsJS(lv.g, xs, ys, offsets, interiorX, interiorY, ctv, lv.w, ox0, oy0);
       if (best) top.push({ s, tx: best.ox * lv.f, ty: best.oy * lv.f, f: lv.f, score: best.score, order: currentOrder });
     }
     return top;
+  }
+
+  // Keep the fallback's hot arithmetic separate from WASM dispatch, so
+  // optional kernels do not inhibit the JavaScript engine's optimisation.
+  function searchPositionsJS(pixels, xs, ys, offsets, interiorX, interiorY, weights, w, ox0, oy0) {
+    const cn = weights.length;
+    let best = null;
+    for (let y = 0, yi = 0; y < interiorY.length; y++, yi += cn) {
+      for (let x = 0, xi = 0; x < interiorX.length; x++, xi += cn) {
+        let sx = 0, sxx = 0, sxt = 0;
+        if (interiorX[x] && interiorY[y]) {
+          const origin = (oy0 + y) * w + ox0 + x;
+          for (let j = 0; j < cn; j++) {
+            const v = pixels[origin + offsets[j]];
+            sx += v; sxx += v * v; sxt += v * weights[j];
+          }
+        } else {
+          for (let j = 0; j < cn; j++) {
+            const v = pixels[ys[yi + j] + xs[xi + j]];
+            sx += v; sxx += v * v; sxt += v * weights[j];
+          }
+        }
+        const variance = sxx - sx * sx / cn;
+        const score = variance > 1e-6 ? sxt / Math.sqrt(variance) : -1;
+        if (!best || score > best.score) best = { ox: ox0 + x, oy: oy0 + y, score };
+      }
+    }
+    return best;
   }
 
   function refineBoardSearch(prepared, top) {
@@ -2256,7 +2263,7 @@
       const t = b[2] > b[1] ? 2 : 1;
       if (b[t] >= 0.025 * c.frame.samples) c.tier = t;
     }
-    const decision = doors || chain ? null : readDecision(img, loc);
+    const decision = doors || chain ? null : preRead && Object.prototype.hasOwnProperty.call(preRead, 'decision') ? preRead.decision : readDecision(img, loc);
     // The warden in the office: no inmate there to Replace or Consume, so a
     // row of cards is the office's Instigate and Bestow, whatever its labels
     // read as (report 67: "Instigate" came apart, and "Bestow" passed for
@@ -2270,6 +2277,8 @@
 
   const api = { scan, scanLocated, readBoardCells, readTools, readChromatic, prepareBoardSearch, coarseBoardSearch, refineBoardSearch, scanPick, pickArtBox, pickRerollShown, locateBoard, readCell, findWarden, findToolIcons, readDoors, readDays, doorCards, dayNumber, prefixVector, textLines, glyphVector, faceVector, artFeature, similarity, hsv, blobs, at, gridOf, scaleAt, grayOf, blur, RING, H0, ARROW, FACE, GLYPH, locateByLabels, readChainScreen, readDecision, readObjectiveTitle, withPanelIcons };
   api.scoreBoardAt = scoreBoardAt;
+  api.setKernels = setKernels;
+  api.kernelsReady = () => !!kernels;
   api.badgeBox = badgeBox; api.readBadge = readBadge;
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TartarusScan = api;

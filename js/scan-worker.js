@@ -5,6 +5,8 @@
 'use strict';
 
 importScripts(`scan.js${self.location.search}`, `scan-data.js${self.location.search}`, `pick-data.js${self.location.search}`, `scan-tracker.js${self.location.search}`, `frame-readiness.js${self.location.search}`);
+importScripts(`scan-accelerator.js${self.location.search}`);
+const accelerationReady = self.TartarusScanAccelerator.load(`scan-kernels.wasm${self.location.search}`);
 let trackingEnabled = false;
 const tracker = self.TartarusScanTracker.create(self.TartarusScan);
 
@@ -52,7 +54,7 @@ function searchTask(worker, message) {
     catch (error) { stopSearchPool(error); }
   });
 }
-async function scanBoard(img, ref, force = false, lang = 'en') {
+async function scanBoard(img, ref, force = false, lang = 'en', fromProbe = null, detail = {}) {
   const pool = prepareSearchPool();
   const S = self.TartarusScan;
   if (!pool && !trackingEnabled) return S.scan(img, ref, { lang });
@@ -60,6 +62,14 @@ async function scanBoard(img, ref, force = false, lang = 'en') {
   const gray = S.grayOf(img), sharp = S.blur(gray, img.width, img.height, 1);
   const prepared = S.prepareBoardSearch(img, gray, ref, sharp);
   let loc = trackingEnabled && !force ? tracker.locate(prepared, img) : null;
+  // Only the exact accepted bitmap gets a handoff from the analyzer's
+  // WeakMap. Different captures, 4K downscales and other languages reread.
+  if (!force && lang === 'en' && fromProbe?.width === img.width && fromProbe?.height === img.height
+      && fromProbe.board?.cells?.length === 16 && fromProbe.board.warden && fromProbe.loc?.score >= 0.82) {
+    if (!loc) loc = fromProbe.loc;
+    if (['s', 'tx', 'ty'].some((key) => loc[key] !== fromProbe.loc[key])) fromProbe = null;
+  } else fromProbe = null;
+  detail.fromProbe = !!fromProbe;
   if (!loc) {
     const sMin = Math.max(0.12, Math.min((0.3 * prepared.W) / prepared.bw, (0.35 * prepared.H) / prepared.bh));
     let minLevel = 0;
@@ -82,6 +92,7 @@ async function scanBoard(img, ref, force = false, lang = 'en') {
   // Reuse the idle search workers for independent panels. Only doors/days
   // need grayscale; the tools and vault readers use the original RGBA.
   const reused = trackingEnabled && !force ? tracker.panels(img, loc) : {};
+  if (fromProbe) { reused.doors = fromProbe.doors; reused.days = fromProbe.days; }
   if (lang !== 'en' || reused.doors?.hidden?.length) delete reused.doors;
   const board = lang !== 'en' ? S.readBoardCells(img, sharp, loc, ref) : null;
   const jobs = [0, 1, 2].filter((panel) => !Object.prototype.hasOwnProperty.call(reused, panel === 0 ? 'doors' : panel === 1 ? 'tools' : 'chromatic'));
@@ -89,16 +100,16 @@ async function scanBoard(img, ref, force = false, lang = 'en') {
     : panel === 1 ? { tools: S.readTools(img, loc, ref) } : { chromatic: S.readChromatic(img, loc) };
   const panelsTask = Promise.all(jobs.map((panel) => searchPool ? searchTask(pool[panel % pool.length], { panel, img, loc, ...(panel === 0 ? { sharp, lang, cells: board?.cells } : {}) }) : readPanel(panel)))
     .then((results) => Object.assign({}, reused, ...results), (error) => { stopSearchPool(error); return null; });
-  const actualBoard = board || S.readBoardCells(img, sharp, loc, ref);
+  const actualBoard = board || fromProbe?.board || S.readBoardCells(img, sharp, loc, ref);
   const panels = await panelsTask;
   // Hidden English card numbers now depend on which board cells are lit.
   // Keep the common panel work parallel; retry only the occluded-door case
   // against this frame's freshly read cells, never cached board lighting.
   if (lang === 'en' && panels?.doors?.hidden?.length) panels.doors = S.readDoors(img, sharp, loc, ref, false, actualBoard.cells);
-  const result = S.scanLocated(img, ref, gray, sharp, loc, started, { board: actualBoard, panels }, { lang });
+  const result = S.scanLocated(img, ref, gray, sharp, loc, started, { board: actualBoard, panels, ...(fromProbe ? { decision: fromProbe.decision } : {}) }, { lang });
   if (trackingEnabled && !force && tracker.info().mode === 'tracked' && (!result.ok || !result.warden || result.cells.some((cell) => cell.conf < 0.2))) {
     tracker.reset();
-    return scanBoard(img, ref, true, lang);
+    return scanBoard(img, ref, true, lang, null, detail);
   }
   if (trackingEnabled) tracker.remember(img, result);
   return result;
@@ -114,6 +125,7 @@ self.onmessage = async (e) => {
   }
   const { id, kind, width, height, buffer, bitmap, lang = 'en' } = e.data;
   try {
+    await accelerationReady;
     let canvas;
     let img;
     if (bitmap) {
@@ -134,7 +146,8 @@ self.onmessage = async (e) => {
     }
     // Instruments' panel icons from labeled live screenshots ride along.
     const ref = self.TartarusScan.withPanelIcons(self.TARTARUS_SCAN, self.TARTARUS_PICK);
-    const result = await scanBoard(img, ref, false, lang);
+    const detail = {};
+    const result = await scanBoard(img, ref, false, lang, e.data.prepared, detail);
     // The instruments' names and their simulator tools ride along.
     if (result.tools && result.tools.tools) {
       for (const t of result.tools.tools) {
@@ -148,7 +161,7 @@ self.onmessage = async (e) => {
     const preview = canvas ? canvas.transferToImageBitmap() : null;
     const calibration = trackingEnabled && result.ok && result.warden && !result.loc.byLabels
       ? { loc: result.loc, width: img.width, height: img.height, sample: self.TartarusFrameReadiness.sample(img, result.loc, self.TartarusScan), controls: self.TartarusFrameReadiness.controlsFor(result) } : null;
-    self.postMessage({ id, result, preview, calibration, tracking: trackingEnabled ? tracker.info() : null }, preview ? [preview] : []);
+    self.postMessage({ id, result, preview, calibration, tracking: trackingEnabled ? { ...tracker.info(), accelerated: self.TartarusScan.kernelsReady(), ...detail } : null }, preview ? [preview] : []);
   } catch (err) {
     self.postMessage({ id, kind, error: String((err && err.message) || err) });
   }

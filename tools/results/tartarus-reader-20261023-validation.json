@@ -1,0 +1,94 @@
+{
+  "build": "0.2.19-local.24",
+  "measuredAt": "2026-10-22T21:16:33.717Z",
+  "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+  "environment": {
+    "electron": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) TartarusOverlay/0.2.19-local.24 Chrome/152.0.7977.130 Electron/44.5.1 Safari/537.36",
+    "logicalCpus": 12
+  },
+  "baseline": "/sandbox/tartarus-reader-before-24/",
+  "measurement": "Alternating reader implementations, one warmup plus three timed repeats per saved frame. Full searches and calibrated reads measured in separate groups. Whole-frame results must match exactly.",
+  "limitations": "Stage timings only. Identical-frame tracked timings do not measure a whole game move; exclude capture, settling, simulation and actual profit. Concurrent user activity is uncontrolled.",
+  "sourceSha256": {
+    "js/scan.js": "c4bc2a99c8c960e8ce249cdd494c6ee64dc57bfc969fc0bddcbc20f927f2cd5c",
+    "js/scan-worker.js": "e98fc1c6fc284a220fc1edd0ae361ea08f9d99306c565d7ae51e95df4cbfd464",
+    "js/scan-search-worker.js": "0fb7ef41780bf2c47888a47b39635b88b17174e82acefc1aa9c3ac77075e3996",
+    "js/ready-worker.js": "e4509b54b98946f4ea84176c1d1ad52837380f05381178618175f03f8fa20518",
+    "js/analyze.js": "5f0d8a69f8a9bbe37be0e1dc5564daca0b5954bd05ed230492b426cdd380141a",
+    "js/scan-accelerator.js": "30d272257cd6a2146eb13a7b44d625726fd316e207bcf9ee3e8c807ef2207155",
+    "tools/scan-kernels.rs": "1f57640b05ba82735fb31487bc3adebbcb6c90eb34c3db507acb3a72d1966ee8"
+  },
+  "wasmSha256": "f9b72eb2e40b546a332f37c12ad367ea6d7c25679fc33c42025253548dcded06",
+  "reader": {
+    "workers": 4,
+    "frames": [
+      {
+        "name": "0004-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 401,
+        "trackedMs": 120,
+        "transition": {
+          "ms": 445,
+          "mode": "full",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 932,
+        "previousTrackedMs": 155
+      },
+      {
+        "name": "0016-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 512,
+        "trackedMs": 178,
+        "transition": {
+          "ms": 339,
+          "mode": "tracked",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 949,
+        "previousTrackedMs": 233
+      }
+    ],
+    "readiness": true,
+    "readinessTimings": {
+      "current": 301,
+      "handoffMs": 110,
+      "previous": 316
+    }
+  },
+  "applicationHandoff": {
+    "values": [
+      false,
+      false,
+      true
+    ],
+    "reused": true,
+    "differentBitmap": true,
+    "handoffMs": 175
+  },
+  "baselineBuild": "0.2.19-local.23",
+  "sourceHashFormat": "SHA256 of file bytes",
+  "baselineSourceSha256": {
+    "scan.js": "dcbe277d39355ba17497f776b281b04701a952a059df3e8b12e9b9f9f31bdd59",
+    "scan-worker.js": "3bdc2f3f953f6f4a5b75b707e8827a04ac346a1c35c39e465ce9d1c5ae4e7e5a",
+    "scan-search-worker.js": "4d3fe2ca2204f31d529d3b51efe472b1f9fc3b0708d2de3f0e19b85ca0c8f226",
+    "scan-tracker.js": "826100947b79dcbdbebe85f1909e316bb49beaaf2507bb62cf8a13cec7405b62",
+    "ready-worker.js": "ec360c107ea486d2e4b51d0942984cf29d490965e085512012ccad1f00540c05"
+  },
+  "validation": {
+    "kernelExactness": "passed: 5 sizes/5 radii, all search scores, clipping/ties, shard order, scratch-memory ownership, missing/corrupt module and memory failure fallback; complete readings on 2 private frames",
+    "readerRegression": "passed: 24 synthetic images, 3 resolutions, 2 private frames, worker creation/crash/panel failure, compatible/incompatible handoff, movement/resizing/missing-board reacquisition",
+    "readiness": "passed: original 3-frame/200ms requirement, stale/unchanged screen rejection, deadline fallback, action epochs, cancellation, exact-bitmap handoff and different-bitmap rejection",
+    "runtime": "passed: isolated Electron fake window/log; 1080p/4K pixels, three entry/exit cleanup cycles, full rollout budget, overlay advice/status/correction, persistent cache, manual bypass, restart, instrument/treasure cache",
+    "wasmRebuild": "byte-identical, Rust 1.99.1 wasm32-unknown-unknown, tools/build-scan-kernels.ps1",
+    "engineSolverCacheAndForecast": "sources unchanged from local.23; cache namespace retained"
+  }
+}

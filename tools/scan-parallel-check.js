@@ -12,6 +12,11 @@ const { Worker: Thread, isMainThread, parentPort, workerData } = require('node:w
 if (!isMainThread) {
   global.self = globalThis;
   self.location = { search: '' };
+  // Browser workers fetch the checked-in kernel beside their own script.
+  self.fetch = async (file) => ({ ok: true, arrayBuffer: async () => {
+    const bytes = fs.readFileSync(path.resolve(path.dirname(workerData.script), file.split('?')[0]));
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  } });
   Object.defineProperty(self, 'navigator', { value: { hardwareConcurrency: workerData.cores } });
   self.postMessage = (message) => parentPort.postMessage(message);
   self.importScripts = (...files) => {
@@ -72,12 +77,12 @@ if (!isMainThread) {
     thread.on('error', (error) => { for (const task of pending.values()) { clearTimeout(task.timer); task.reject(error); } pending.clear(); });
     thread.postMessage({ configure: { parallel: true, tracking } });
     return {
-      async scan(img) {
+      async scan(img, prepared) {
         const current = ++id;
         return new Promise((resolve, reject) => {
           const timer = setTimeout(() => { pending.delete(current); reject(new Error('Reader timed out')); }, 30000);
           pending.set(current, { resolve, reject, timer });
-          thread.postMessage({ id: current, width: img.width, height: img.height, buffer: img.data.buffer });
+          thread.postMessage({ id: current, width: img.width, height: img.height, buffer: img.data.buffer, prepared });
         });
       },
       spawned: () => spawned,
@@ -132,6 +137,18 @@ if (!isMainThread) {
       assert.equal(parallel.spawned(), 4, 'Search workers were recreated per frame');
       const board = fixtures.find(({ name }) => name.endsWith('.rgba'));
       if (board) {
+        const handed = reader(8, null, true);
+        try {
+          const img = board.img, oracle = expected(img), gray = S.grayOf(img), sharp = S.blur(gray, img.width, img.height, 1), loc = oracle.loc;
+          const cells = S.readBoardCells(img, sharp, loc, ref);
+          const prepared = { width: img.width, height: img.height, loc, board: cells,
+            doors: S.readDoors(img, sharp, loc, ref, false, cells.cells), days: S.readDays(img, sharp, loc, ref), decision: S.readDecision(img, loc) };
+          assert.deepEqual(clean(await handed.scan(img, prepared)), oracle, 'exact-frame handoff changed the reading');
+          assert.equal(handed.info().fromProbe, true);
+          assert.deepEqual(clean(await handed.scan(img, { ...prepared, width: img.width + 1 })), oracle, 'invalid handoff did not fall back');
+          assert.equal(handed.info().fromProbe, false);
+          console.log('PASS: exact-frame probe handoff and incompatible-dimensions fallback preserve full reader results.');
+        } finally { await handed.stop(); }
         const failedPanel = reader(8, 'panel');
         try {
           assert.deepEqual(clean(await failedPanel.scan(board.img)), expected(board.img));
@@ -146,6 +163,7 @@ if (!isMainThread) {
             const start = performance.now();
             assert.deepEqual(clean(await tracked.scan(frame.img)), oracle, 'repeated board differs from full reading');
             assert.equal(tracked.info().mode, 'tracked');
+            assert.equal(tracked.info().accelerated, true, 'WASM reader was not enabled');
             assert.equal(tracked.info().panels, 3, 'identical panels were read again');
             console.log(`PASS: calibrated layout, exact full output and 3 reused panels ${frame.name}: ${(performance.now() - start).toFixed(0)} ms.`);
           }

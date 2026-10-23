@@ -95,6 +95,8 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
   const code = `const base=${JSON.stringify(base)};
     const originalImport=importScripts;
     self.importScripts=(...files)=>originalImport.apply(self,files.map(file=>new URL(file,base).href));
+    const originalFetch=fetch;
+    self.fetch=(file,...args)=>originalFetch(new URL(file,base).href,...args);
     const OriginalWorker=Worker;
     self.Worker=class extends OriginalWorker {
       constructor(file,options){super(new URL(file,base).href,options);self.postMessage({trace:'created'});
@@ -121,17 +123,18 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     return {
       worker, counts: () => ({ created, failed }),
       info: () => lastTracking, calibration: () => calibration,
-      scan: (img) => new Promise((resolve, reject) => {
+      scan: (img, prepared) => new Promise((resolve, reject) => {
         const current = ++id;
         const timer = setTimeout(() => { pending.delete(current); reject(new Error('Browser reader timed out')); }, 30000);
         pending.set(current, { resolve, reject, timer });
-        worker.postMessage({ id: current, width: img.width, height: img.height, buffer: img.data.buffer });
+        worker.postMessage({ id: current, width: img.width, height: img.height, buffer: img.data.buffer, prepared });
       }),
     };
   }
   const serial = start(false), parallel = start(true);
   const tracked = start(true, url, true);
   const previous = previousBase ? start(true, makeURL(new URL(previousBase, location.href).href)) : null;
+  const previousTracked = previousBase ? start(true, makeURL(new URL(previousBase, location.href).href), true) : null;
   const stats = [];
   let firstFrame = null, lastFrame = null;
   try {
@@ -148,9 +151,9 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       } else img = { width: 160, height: 100, data: new Uint8ClampedArray(160 * 100 * 4).fill(73) };
       let expected;
       let transition = null;
-      const times = { serial: [], parallel: [], previous: [], tracked: [] };
-      for (let i = 0; i < (frame.url ? 4 : 1); i++) {
-        const order = [['serial', serial], ['parallel', parallel], ['tracked', tracked], ...(previous ? [['previous', previous]] : [])];
+      const times = { serial: [], parallel: [], previous: [], tracked: [], previousTracked: [] };
+      const rounds = frame.url ? 4 : 1;
+      const measure = async (order, i) => {
         if (i % 2) order.reverse();
         for (const [name, reader] of order) {
           const start = performance.now(), result = await reader.scan(img), elapsed = performance.now() - start;
@@ -161,14 +164,24 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
           if (!i && name === 'tracked') transition = { ms: Math.round(elapsed), ...tracked.info() };
           if (!frame.url || i) times[name].push(elapsed);
         }
+      };
+      // Compare full searches and calibrated reads separately. Interleaving
+      // five pipelines can legitimately expire the 30s calibration deadline
+      // between tracked samples on a busy PC.
+      for (let i = 0; i < rounds; i++) {
+        await measure(previous ? [['parallel', parallel], ['previous', previous]] : [['serial', serial], ['parallel', parallel]], i);
+      }
+      for (let i = 0; i < rounds; i++) {
+        await measure([['tracked', tracked], ...(previous ? [['previousTracked', previousTracked]] : [])], i);
       }
       const median = (values) => values.sort((a, b) => a - b)[values.length >> 1];
       if (frame.url) {
         if (!firstFrame) firstFrame = { img, calibration: tracked.calibration() };
         lastFrame = { img, calibration: tracked.calibration() };
         if (tracked.info().mode !== 'tracked' || tracked.info().panels !== 3) throw new Error('Layout/panel reuse did not run');
+        if (!tracked.info().accelerated) throw new Error('WASM reader did not load in Electron');
       }
-      stats.push({ name: frame.name, serialMs: Math.round(median(times.serial)), parallelMs: Math.round(median(times.parallel)), trackedMs: Math.round(median(times.tracked)), transition, ...(previous ? { previousMs: Math.round(median(times.previous)) } : {}) });
+      stats.push({ name: frame.name, width: img.width, height: img.height, serialMs: times.serial.length ? Math.round(median(times.serial)) : null, parallelMs: Math.round(median(times.parallel)), trackedMs: Math.round(median(times.tracked)), transition, ...(previous ? { previousMs: Math.round(median(times.previous)), previousTrackedMs: Math.round(median(times.previousTracked)) } : {}) });
     }
     const count = parallel.counts(), expected = Math.min(4, Math.max(0, navigator.hardwareConcurrency - 2));
     if (count.created !== (expected >= 2 ? expected : 0) || count.failed || serial.counts().created) throw new Error(`Browser search pool failed: ${JSON.stringify(count)}`);
@@ -177,14 +190,14 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     if (firstFrame && lastFrame && firstFrame.img !== lastFrame.img && firstFrame.calibration) {
       for (const [label, probeBase] of [['current', base], ...(compareProbe ? [['previous', new URL(previousBase, location.href).href]] : [])]) {
         const probe = new Worker(new URL('ready-worker.js', probeBase));
-        let id = 0;
+        let id = 0, accepted = null;
         async function check(img) {
           const canvas = new OffscreenCanvas(img.width, img.height);
           canvas.getContext('2d').putImageData(img, 0, 0);
           const bitmap = canvas.transferToImageBitmap(), current = ++id;
           return new Promise((resolve, reject) => {
             const timer = setTimeout(() => reject(new Error('Readiness worker timed out')), 5000);
-            probe.onmessage = ({ data }) => { if (data.id === current) { clearTimeout(timer); resolve(data.ready); } };
+            probe.onmessage = ({ data }) => { if (data.id === current) { clearTimeout(timer); if (data.ready) accepted = data.prepared; resolve(data.ready); } };
             probe.onerror = (error) => { clearTimeout(timer); reject(new Error(error.message)); };
             probe.postMessage({ id: current, epoch: 1, bitmap }, [bitmap]);
           });
@@ -201,12 +214,21 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
             await new Promise((resolve) => setTimeout(resolve, 110));
           }
           readinessTimings[label] = Math.round(times.sort((a, b) => a - b)[times.length >> 1]);
+          if (label === 'current') {
+            if (!accepted) throw new Error('Accepted readiness frame did not include its readings');
+            const start = performance.now(), result = await tracked.scan(lastFrame.img, accepted);
+            readinessTimings.handoffMs = Math.round(performance.now() - start);
+            delete result.ms;
+            const oracle = await parallel.scan(lastFrame.img); delete oracle.ms;
+            if (JSON.stringify(result) !== JSON.stringify(oracle)) throw new Error('Readiness handoff changed the final reading');
+            if (!tracked.info().fromProbe) throw new Error('Accepted frame was read twice');
+          }
           readiness = true;
         } finally { probe.terminate(); }
       }
     }
     return { workers: count.created, frames: stats, readiness, readinessTimings };
-  } finally { serial.worker.terminate(); parallel.worker.terminate(); tracked.worker.terminate(); if (previous) previous.worker.terminate(); for (const url of urls) URL.revokeObjectURL(url); }
+  } finally { serial.worker.terminate(); parallel.worker.terminate(); tracked.worker.terminate(); if (previous) previous.worker.terminate(); if (previousTracked) previousTracked.worker.terminate(); for (const url of urls) URL.revokeObjectURL(url); }
 }
 
 (async () => {
@@ -428,6 +450,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     const compareProbe = readerBaselineAt >= 0 && fs.existsSync(path.resolve(process.argv[readerBaselineAt + 1], 'ready-worker.js'));
     const pool = await evaluate(`(${checkBrowserSearchPool.toString()})(${JSON.stringify(frames)},${JSON.stringify(previousBase)},${compareProbe})`);
     console.log(`PASS: real Electron nested search workers, exact reader results and reuse: ${JSON.stringify(pool)}`);
+    let appReadiness = null;
     if (frames.length >= 2) {
       const readiness = await evaluate(`(async()=>{
         const urls=${JSON.stringify(frames.slice(0, 2).map((frame) => frame.url))};
@@ -436,7 +459,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
         const result=await TartarusAnalyzer.readFrameDirect(first);
         if(!result.ok)throw new Error('Could not calibrate the application reader');
         const old=await load(urls[0]),next=await load(urls[1]);
-        const values=[];
+        const values=[]; let reused = false, differentBitmap = false, handoffMs = 0;
         try{
           for(let i=0;i<3;i++)if(await TartarusAnalyzer.probeFrame(old,{epoch:98765}))throw new Error('Application accepted an unchanged old frame');
           for(let i=0;i<3;i++){
@@ -444,11 +467,35 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
             if(ready!==(i===2))throw new Error('Application readiness bridge returned '+JSON.stringify(values));
             await new Promise(resolve=>setTimeout(resolve,110));
           }
+          const start=performance.now(),result=await TartarusAnalyzer.readFrameDirect(next);handoffMs=Math.round(performance.now()-start);
+          if(!result.ok||!TartarusAnalyzer.readerInfo().fromProbe)throw new Error('Analyzer lost its exact-bitmap readiness handoff');
+          reused=true;
+          const another=await load(urls[1]);
+          const normal=await TartarusAnalyzer.readFrameDirect(another);
+          if(!normal.ok||TartarusAnalyzer.readerInfo().fromProbe)throw new Error('Analyzer reused readings for a different bitmap');
+          differentBitmap=true;
         }finally{old.close();next.close();}
-        return values;
+        return {values,reused,differentBitmap,handoffMs};
       })()`);
-      assert.deepEqual(readiness,[false,false,true]);
-      console.log('PASS: the real analyzer readiness bridge rejects old screens and accepts 3 stable changed frames with visible controls.');
+      assert.deepEqual(readiness.values,[false,false,true]);
+      appReadiness = readiness;
+      console.log('PASS: the real analyzer readiness bridge rejects old screens, requires 3 stable changed frames and hands off only the exact accepted bitmap: '+JSON.stringify(readiness));
+    }
+    if (process.argv.includes('--reader-only')) {
+      const reportAt = process.argv.indexOf('--reader-report');
+      if (reportAt >= 0) {
+        const { createHash } = require('node:crypto');
+        const sources = ['js/scan.js', 'js/scan-worker.js', 'js/scan-search-worker.js', 'js/ready-worker.js', 'js/analyze.js', 'js/scan-accelerator.js', 'tools/scan-kernels.rs'];
+        const sha = (file) => createHash('sha256').update(fs.readFileSync(path.resolve(ROOT, file))).digest('hex');
+        const report = { build: require('../desktop/package.json').version, measuredAt: new Date().toISOString(), cpu: require('node:os').cpus()[0].model,
+          environment: await evaluate('({electron:navigator.userAgent,logicalCpus:navigator.hardwareConcurrency})'),
+          baseline: previousBase, measurement: 'Alternating reader implementations, one warmup plus three timed repeats per saved frame. Full searches and calibrated reads measured in separate groups. Whole-frame results must match exactly.',
+          limitations: 'Stage timings only. Identical-frame tracked timings do not measure a whole game move; exclude capture, settling, simulation and actual profit. Concurrent user activity is uncontrolled.',
+          sourceSha256: Object.fromEntries(sources.map((file) => [file, sha(file)])), wasmSha256: sha('js/scan-kernels.wasm'),
+          reader: pool, applicationHandoff: appReadiness };
+        fs.writeFileSync(path.resolve(process.argv[reportAt + 1]), JSON.stringify(report, null, 2) + '\n');
+      }
+      return;
     }
 
     const solverBaselineAt = process.argv.indexOf('--solver-baseline');
@@ -458,7 +505,10 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       const timing = await evaluate(`(${checkBrowserSolver.toString()})(${JSON.stringify(solverBase)})`);
       console.log(`PASS: exact full Monte Carlo samples/rankings and alternating median solver timings in Electron: ${JSON.stringify(timing)}`);
     }
-    await evaluate(`document.getElementById('az-example').click();const r=document.getElementById('az-riot');r.value='1';r.dispatchEvent(new Event('change'));TartarusAnalyzer.ask();true`);
+    // Long offline reader benchmarks can correctly expire the 30s game-log
+    // watchdog. The remaining checks exercise manual advice/overlay UI,
+    // so mark only the isolated test's UI active without waking capture.
+    await evaluate(`TartarusDesktop.follow({...TartarusCapture.state,active:true,agreed:true});document.getElementById('az-example').click();const r=document.getElementById('az-riot');r.value='1';r.dispatchEvent(new Event('change'));TartarusAnalyzer.ask();true`);
     let snapshot;
     for (let i = 0; i < 600; i++) { snapshot = await evaluate('TartarusAnalyzer.desktopSnapshot()'); if (snapshot.move) break; await pause(50); }
     assert.ok(snapshot.move, JSON.stringify(snapshot));
@@ -472,7 +522,14 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     for (let i = 0; i < 600; i++) { snapshot = await evaluate('TartarusAnalyzer.desktopSnapshot()'); if (snapshot.move) break; await pause(50); }
     const overlayTarget = targets.find((t) => t.url.endsWith('/overlay.html'));
     const overlay = await connect(overlayTarget.webSocketDebuggerUrl); sockets.push(overlay.ws);
-    assert.ok((await overlay.evaluate('document.body.textContent')).includes(snapshot.move), 'advice never reached overlay');
+    // Analyzer completion precedes IPC delivery/rendering in the overlay.
+    let adviceBody = '';
+    for (let i = 0; i < 100; i++) {
+      adviceBody = await overlay.evaluate('document.body.textContent');
+      if (adviceBody.includes(snapshot.move)) break;
+      await pause(25);
+    }
+    assert.ok(adviceBody.includes(snapshot.move), 'advice never reached overlay: ' + adviceBody);
     for (const phase of ['settling', 'reading']) {
       await evaluate(`TartarusAnalyzer.invalidate();TartarusAnalyzer.setReadStatus({at:Date.now(),kind:'board',phase:${JSON.stringify(phase)}});true`);
       const message = phase === 'settling' ? 'Waiting for the game screen' : 'Reading the picture';

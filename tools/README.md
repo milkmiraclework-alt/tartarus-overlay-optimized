@@ -1196,3 +1196,26 @@ worker allocation and the local.22 result-cache namespace are retained.
 `node tools/tips-check.js` checks note composition and hidden/unchanged render
 cost. `node tools/overlay-check.js --contracts-only` also checks the real notes
 panel, its instrument-pair text, contract changes and DOM reuse.
+
+## Tartarus reader kernels (local.24)
+
+`js/scan-kernels.wasm` is built from `tools/scan-kernels.rs`, with no dependencies.
+The runtime needs only the supplied binary; unsupported WASM/SIMD, loading
+failure or a kernel memory limit retains the exact JavaScript reader.
+
+```
+rustup target add wasm32-unknown-unknown
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-scan-kernels.ps1
+node tools/scan-kernel-check.js
+node tools/scan-parallel-check.js --frames sandbox/reader-profile
+node tools/overlay-check.js --reader-only --frames sandbox/reader-profile --reader-baseline sandbox/tartarus-reader-before-24 --reader-report tools/results/tartarus-reader-20261023-validation.json
+```
+
+The private frame directories are optional local test inputs, not distributed
+screenshots. Kernel checks compare every candidate score, clipped/tied cases,
+blur output and memory ownership with the JavaScript path. `--frames DIR`
+also compares complete readings. Electron checks cover normal/reused panels,
+the readiness worker, exact-bitmap handoff, other-bitmap rejection, 1080p/4K
+pixel parity and worker cleanup. Stage timing reports exclude animation waits,
+simulation time and game profit. `node tools/overlay-check.js` additionally
+checks the advice/overlay UI, full-budget persistent cache and app restart.
