@@ -1,6 +1,6 @@
 # Tartarus Optimized desktop overlay
 
-Version 0.2.20-local.27, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
+Version 0.2.20-local.28, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
 
 The Windows x64 installer and portable EXE include their own Electron, native
 capture libraries, analyzer, Rust/WASM reader and Monte Carlo core, and English
@@ -15,6 +15,14 @@ port 8090 is unaffected. --site-port=N changes only the virtual origin for
 isolated development/tests.
 
 ## Calculation and corrections
+
+Unknown day-one starting instrument offers now sample their own initial inmates
+and day-one patrol, without replacing observed boards. Prey-link Consume costs
+use actual survival probabilities, including Cage Fight and weighted beast rolls.
+Adaptive gift sampling remains disabled after independent quality comparisons.
+The sampler uses two integer-grid GPU draws; calibrated reads build only level
+zero of the search pyramid. A probe timeout uses the normal bounded fallback,
+then a fresh successful calibration permits recovery during the same run.
 
 Each worker retains a Rust job containing the compact board, policy, bounded
 chain cache and RNG. Full remaining-game playouts, engine actions, chain values,

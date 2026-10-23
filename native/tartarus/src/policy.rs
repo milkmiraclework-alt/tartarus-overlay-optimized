@@ -44,6 +44,10 @@ pub struct Policy {
     pub office: Option<Office>,
     pub gift_rank: Option<Vec<Id>>,
     pub gift_chain: bool,
+    #[serde(default)]
+    pub prey_survival: bool,
+    #[serde(default)]
+    pub gift_adaptive: bool,
     /// Differential quality audit only; normal jobs use corrected chain math.
     #[serde(default)]
     pub legacy_wolf_chains: bool,
@@ -822,11 +826,83 @@ impl<'a> Context<'a> {
         }
         value
     }
-    fn link_loss(&self, i: Inmate, certain: bool) -> f64 {
-        self.st
-            .link_of(i.id)
-            .map(|p| self.link_value(p) * if certain || p.prey == i.id { 1. } else { 0.75 })
-            .unwrap_or(0.)
+    fn link_loss(&self, i: Inmate, certain: bool, option: Option<Meal>) -> f64 {
+        let Some(link) = self.st.link_of(i.id) else {
+            return 0.;
+        };
+        if !self.p.prey_survival {
+            return self.link_value(link)
+                * if certain || link.prey == i.id {
+                    1.
+                } else {
+                    0.75
+                };
+        }
+        let Some(option) = option.filter(|_| !certain) else {
+            return self.link_value(link);
+        };
+        let meal = if option.scratch {
+            self.st.cells[option.cell].hidden
+        } else {
+            self.st.cells[option.cell].inmate
+        }
+        .unwrap();
+        let mut gain = if option.scratch {
+            2 + self.st.params.scratch_stacks_base as i32
+        } else if i.beast == Beast::Mammoth && self.has(Maul) {
+            (meal.tier + 2 - i.tier).max(1)
+        } else {
+            1
+        };
+        if self.has(Muzzle) && self.st.board().len() <= 4 {
+            gain += 2;
+        }
+        if self.has(Skewer) && i.beast == Beast::Rat {
+            gain += 1;
+        }
+        if self.has(Crown) && i.beast == Beast::Lion {
+            gain += 2;
+        }
+        let kept = if link.lion == i.id {
+            Beast::Lion
+        } else {
+            link.prey_beast
+        };
+        let weights = &self.st.params.beast_weights;
+        let sum = weights.iter().fold(0., |s, w| s + w.max(0.));
+        let same = if sum > 0. {
+            weights[kept.index()].max(0.) / sum
+        } else {
+            (kept == Beast::Mammoth) as u8 as f64
+        };
+        let odds = [
+            if self.has(Saw) { 0.25 } else { 0. },
+            if self.has(Whip) { 0.35 } else { 0. },
+            if self.st.chaining.is_some() && self.has(Collar) {
+                0.8
+            } else {
+                0.
+            },
+        ];
+        let mut loss = 0.;
+        for a in 0..2 {
+            for b in 0..2 {
+                for c in 0..2 {
+                    let p = (if a != 0 { odds[0] } else { 1. - odds[0] })
+                        * (if b != 0 { odds[1] } else { 1. - odds[1] })
+                        * (if c != 0 { odds[2] } else { 1. - odds[2] });
+                    let rainbow = i.tier + gain + a + b + c >= 5;
+                    loss += p * if rainbow {
+                        (self.st.vault.len() < 10) as u8 as f64
+                    } else if self.fight {
+                        0.
+                    } else {
+                        1. - same
+                    };
+                }
+            }
+        }
+        self.link_value(link) * loss
     }
     fn best_hunt(&self) -> Option<(usize, f64)> {
         if !e::can_hunt(self.st) {
@@ -856,7 +932,6 @@ impl<'a> Context<'a> {
             return vec![];
         };
         let (mut comp, crowd) = composition(self.st, Some(here.n));
-        let own = self.link_loss(i, false);
         let chained = self.st.chaining.is_some();
         let mut out = vec![];
         for o in if chained {
@@ -865,6 +940,7 @@ impl<'a> Context<'a> {
             e::start_options(self.st)
         } {
             let target = self.st.cells[o.cell];
+            let own = self.link_loss(i, false, Some(o));
             let meal = if o.scratch {
                 target.hidden.unwrap()
             } else {
@@ -873,7 +949,7 @@ impl<'a> Context<'a> {
             let ml = if o.scratch {
                 0.
             } else {
-                self.link_loss(meal, true)
+                self.link_loss(meal, true, None)
             };
             let same = own != 0.
                 && ml != 0.
@@ -915,7 +991,7 @@ impl<'a> Context<'a> {
         else {
             return f64::NEG_INFINITY;
         };
-        let mut gain = self.swap_value(i.tier) - self.link_loss(i, true);
+        let mut gain = self.swap_value(i.tier) - self.link_loss(i, true, None);
         if here.ivory {
             let board: Vec<_> = self
                 .st
@@ -1171,6 +1247,9 @@ fn pick_gift(st: &State, ctx: &Context, options: &[Id], rng: &mut u32) -> Id {
             return Wine;
         }
     }
+    if p.gift_adaptive {
+        return paired_gift(st, ctx, options, rng);
+    }
     let mut best = None;
     for &id in options {
         let mut value = 0.;
@@ -1194,6 +1273,63 @@ fn pick_gift(st: &State, ctx: &Context, options: &[Id], rng: &mut u32) -> Id {
         }
     }
     best.map(|(id, _)| id).unwrap_or(options[0])
+}
+fn paired_gift(st: &State, ctx: &Context, options: &[Id], rng: &mut u32) -> Id {
+    let mut vals: Vec<Vec<f64>> = options.iter().map(|_| Vec::with_capacity(6)).collect();
+    let mut means = vec![0.; options.len()];
+    let sample =
+        |indices: &[usize], rng: &mut u32, vals: &mut Vec<Vec<f64>>, means: &mut Vec<f64>| {
+            for _ in 0..3 {
+                let seed = (random(rng) * 4294967296.) as u32;
+                for &i in indices {
+                    let value = if options[i] == Wine && !vals[i].is_empty() {
+                        vals[i][0]
+                    } else {
+                        let mut trial = st.clone();
+                        trial.rng = seed;
+                        if !e::apply(&mut trial, &Action::Choose { id: options[i] }) {
+                            0.
+                        } else {
+                            let r = if trial.vault.len() >= 10 {
+                                ctx.v[4]
+                            } else {
+                                ctx.v[5] * ctx.p.rainbow_mult
+                            };
+                            board_value(&trial, &ctx.v, r)
+                        }
+                    };
+                    vals[i].push(value);
+                }
+            }
+            for &i in indices {
+                means[i] = vals[i].iter().sum::<f64>() / vals[i].len() as f64;
+            }
+        };
+    let mut indices: Vec<_> = (0..options.len()).collect();
+    sample(&indices, rng, &mut vals, &mut means);
+    indices.sort_by(|&a, &b| means[b].total_cmp(&means[a]));
+    if indices.len() > 1 {
+        let (a, b) = (indices[0], indices[1]);
+        let gap = means[a] - means[b];
+        let n = vals[a].len() as f64;
+        let se = (vals[a]
+            .iter()
+            .zip(&vals[b])
+            .map(|(&x, &y)| (x - y - gap).powi(2))
+            .sum::<f64>()
+            / (n * (n - 1.)))
+            .sqrt();
+        if se > 0. && gap < 1.96 * se {
+            sample(&indices[..2], rng, &mut vals, &mut means);
+        }
+    }
+    let mut best = 0;
+    for i in 1..options.len() {
+        if means[i] > means[best] {
+            best = i;
+        }
+    }
+    options[best]
 }
 fn combo_value(ids: &[Id]) -> Option<f64> {
     let d = &data().combos;

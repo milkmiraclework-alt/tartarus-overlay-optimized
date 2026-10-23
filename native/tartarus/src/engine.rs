@@ -1408,6 +1408,49 @@ pub fn candidates(s: &State) -> Vec<Action> {
 pub fn hide_future(s: &mut State, seed: u32) {
     let mut rng = seed;
     s.rng = (random(&mut rng) * 4294967296.) as u32;
+    if s.initial_inmates_pending {
+        s.initial_inmates_pending = false;
+        if s.day == 1
+            && s.position == 0
+            && s.tools.is_empty()
+            && s.cells.iter().all(|c| {
+                c.n == 0
+                    || (c.sealed
+                        && c.inmate.is_none()
+                        && c.hidden.is_none()
+                        && c.event.is_none()
+                        && c.nest.is_none()
+                        && !c.scratch
+                        && c.at_least == 0)
+            })
+        {
+            spawn(s, s.params.event_start_chance);
+            let mut world = seed ^ 0x243f6a88;
+            let count = s.params.start_inmates.saturating_sub(
+                (random(&mut world) * 100. < s.params.start_inmates_fewer) as usize,
+            );
+            let free: Vec<_> = s
+                .cells
+                .iter()
+                .filter(|c| c.n != 0 && c.sealed && c.event.is_none())
+                .map(|c| c.n)
+                .collect();
+            for n in shuffle(&mut world, free).into_iter().take(count) {
+                let b = Beast::ALL[pick_index(&mut world, &s.params.beast_weights)];
+                let tier = pick_index(&mut world, &s.params.start_weights) as i32;
+                let inmate = make(s, b, tier);
+                s.cells[n] = Cell {
+                    n,
+                    sealed: false,
+                    inmate: Some(inmate),
+                    event_known: true,
+                    ..Cell::default()
+                };
+                s.stats.best = s.stats.best.max(tier);
+            }
+            begin_day(s);
+        }
+    }
     for c in &mut s.cells {
         if c.event.is_some() && !c.event_known {
             c.event = pick(&mut rng, &s.event_pool)

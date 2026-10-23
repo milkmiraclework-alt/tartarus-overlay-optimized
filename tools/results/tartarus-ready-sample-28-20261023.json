@@ -1,0 +1,31 @@
+{
+  "checkedAt": "2026-10-23T07:48:17.394Z",
+  "version": "0.2.20-local.28",
+  "checks": 72,
+  "clipped": 0,
+  "results": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "currentMedianMs": 1.5,
+      "previousMedianMs": 10.799999982118607
+    },
+    {
+      "width": 2560,
+      "height": 1440,
+      "currentMedianMs": 1.300000011920929,
+      "previousMedianMs": 11
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "currentMedianMs": 1.4000000059604645,
+      "previousMedianMs": 11
+    }
+  ],
+  "baseline": "sandbox\\tartarus-before-28\\js",
+  "electron": "44.5.1",
+  "measurement": "Opaque pseudorandom GPU bitmaps; 24 fractional layout transforms at each of 1080p/1440p/4K. Warm medians of 15 calls after 5 warmups, alternating order; different old/new grids each preserve their respective exact CPU semantics.",
+  "limitations": "Only the tiny readiness sampler; excludes semantic recognition, full capture, game animations and simulation. Background user activity uncontrolled.",
+  "gameInput": false
+}

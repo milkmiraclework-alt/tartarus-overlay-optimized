@@ -1354,3 +1354,42 @@ and `--check` use the selection. `tools/standalone-manifest.js --dist <directory
 checks an explicit build; the portable smoke check defaults to the current
 version's directory. Readiness timings are stage measurements on saved frames,
 not live-game animation latency, FPS or profit/hour.
+
+## Reader and strategy corrections (local.28)
+
+`node tools/ready-sample-check.js` checks 72 fractional GPU/CPU layouts with
+opaque pseudorandom 1080p/1440p/4K bitmaps. Optional `--reference <js-directory>`
+compares warm sampler medians, and `--report <json>` stores results. The new
+odd-stride integer grid uses two GPU draws; its CPU oracle is `sampleFast`.
+The legacy `sample` API is retained for old calibration compatibility. Clipped
+source grids use the full-image CPU fallback. Semantic readiness thresholds,
+the three-frame/200 ms gate and final control checks are retained.
+
+`node tools/ready-worker-recovery-check.js` injects an actual probe timeout into
+the analyzer bridge. The worker and pending request are released, retries stay
+disabled until a successful full read, and a fresh calibration restarts the
+cheap probe with the correct board. This avoids a permanent slow path after
+one busy CPU/GPU interval.
+
+`node tools/strategy-28-check.js` checks unknown starting-offer worlds, both
+sides of Prey links, Cage Fight, weighted beasts, capped/full vaults and random
+Saw upgrades, including exact JS/Rust raw-sample parity. Known boards and
+non-starting offers are never resampled. The engine's ordinary new-game rules
+remain identical to the pinned author's rules.
+
+`node tools/strategy-quality-check.js --games 1024 --mc-games 8 --rollouts 64`
+compares the frozen local.27 WASM with the current core on independent full
+policy games and full adviser games. Adviser decisions use the production
+paired-SE/0.05 switch rule at every action, with a recorded budget below the
+production 400–1600. `--prefix` selects a separate seed family, `--reference`
+selects a baseline WASM, and `--report` selects the report. Comparisons also
+prove that disabling policy corrections reproduces the frozen core exactly.
+Adaptive gift trials use common seeds and extra trials only for close leaders;
+they remain disabled by default because these comparisons do not establish a
+consistent improvement. These are synthetic game checks, not real profit/hour.
+
+The additional independent `--sets 0,2,3 --games 128 --mc-games 2 --rollouts 400
+--prefix STRATEGY28-HOLDOUT-B` report uses the lower production budget on a
+smaller holdout. The default baseline can be reconstructed from the local.27
+ancestor commit if the private snapshot is absent; no private frames are
+needed for these synthetic strategy checks.

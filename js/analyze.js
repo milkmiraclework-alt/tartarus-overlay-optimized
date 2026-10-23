@@ -346,6 +346,10 @@
         const options = kind === 'gift' ? T.GIFT_IDS.slice() : [...new Set(m.choice.options)].filter((id) => T.TOOLS[id] && !st.tools.includes(id));
         if (!options.length) problems.push('Pick the tools on offer.');
         st.pending = [{ kind, options, rerolls: kind === 'tool' ? m.choice.rerolls || 0 : 0 }];
+        if (kind === 'tool' && m.runStart && st.day === 1 && !st.tools.length
+          && st.cells.every(c => c.n === T.OFFICE || (c.sealed && !c.hidden && !c.event && !c.nest && !c.scratch && !c.atLeast))) {
+          st.initialInmatesPending = true;
+        }
         // The Treasure's picks still waiting after this one (Opulence).
         if (kind === 'gift') for (let k = 1; k < clamp(toInt(m.choice.picks, 1), 1, 30); k++) st.pending.push({ kind, options: options.slice(), rerolls: 0 });
         break;
@@ -511,7 +515,7 @@
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
   // Bump for rule/strategy imports, retain across compatible UI-only fixes.
-  const SOLVER_CACHE_REVISION = '?v=20261023rust27';
+  const SOLVER_CACHE_REVISION = '?v=20261023rust28';
   const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=308b947:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
@@ -1952,6 +1956,14 @@
     for (const task of readyJobs.values()) { clearTimeout(task.timer); task.resolve(false); }
     readyJobs.clear();
   }
+  function calibrateReadyWorker(calibration) {
+    readyCalibration = calibration || null;
+    // A timeout falls back to the bounded normal read for this move. A fresh
+    // successful read can recover the cheap probe; never disable it for the
+    // rest of the run after a single busy GPU/CPU interval.
+    if (readyCalibration) readyFailed = false;
+    if (readyWorker) readyWorker.postMessage({ calibrate: readyCalibration });
+  }
   function prepareReadyWorker() {
     if (!FAST_DESKTOP || readyFailed) return null;
     if (readyWorker) return readyWorker;
@@ -2272,8 +2284,7 @@
           reader.tracking = e.data.tracking || null;
           const p = reader.pending;
           if (p && e.data.id === p.id) {
-            readyCalibration = e.data.calibration || null;
-            if (readyWorker) readyWorker.postMessage({ calibrate: readyCalibration });
+            calibrateReadyWorker(e.data.calibration);
             if (e.data.preview) {
               if (reader.image && typeof reader.image.close === 'function' && !(window.TartarusReport && window.TartarusReport.isOpen())) reader.image.close();
               reader.image = e.data.preview;

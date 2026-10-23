@@ -1,0 +1,540 @@
+{
+  "checkedAt": "2026-10-23T07:49:53.863Z",
+  "version": "0.2.20-local.28",
+  "prefix": "STRATEGY28-HOLDOUT-A",
+  "baseline": "local.27 frozen WASM",
+  "variants": [
+    {
+      "name": "local27"
+    },
+    {
+      "name": "preySurvival",
+      "overrides": {
+        "preySurvival": true,
+        "giftAdaptive": false
+      }
+    },
+    {
+      "name": "adaptiveGifts",
+      "overrides": {
+        "preySurvival": true,
+        "giftAdaptive": true
+      }
+    }
+  ],
+  "productionGiftAdaptive": false,
+  "equivalenceGames": 96,
+  "policyGamesPerVariant": 6144,
+  "adviserGamesPerVariant": 48,
+  "adviserRolloutsPerAction": 64,
+  "adviserDecisions": 6272,
+  "elapsedMs": 298172,
+  "policy": [
+    {
+      "tools": [],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 2.8916015625,
+          "ci95": 0.11475563751588863,
+          "capped": 15
+        },
+        "next": {
+          "n": 1024,
+          "mean": 2.8916015625,
+          "ci95": 0.11475563751588863,
+          "capped": 15
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 2.8916015625,
+          "ci95": 0.11475563751588863,
+          "capped": 15
+        },
+        "next": {
+          "n": 1024,
+          "mean": 2.8876953125,
+          "ci95": 0.11594967586249173,
+          "capped": 14
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.00390625,
+          "ci95": 0.04482830972413863,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1179.899699999999,
+        1167.2710999999967
+      ]
+    },
+    {
+      "tools": [
+        "trap"
+      ],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 5.978515625,
+          "ci95": 0.13734055645100918,
+          "capped": 83
+        },
+        "next": {
+          "n": 1024,
+          "mean": 5.978515625,
+          "ci95": 0.13734055645100918,
+          "capped": 83
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 5.978515625,
+          "ci95": 0.13734055645100918,
+          "capped": 83
+        },
+        "next": {
+          "n": 1024,
+          "mean": 5.904296875,
+          "ci95": 0.13831297500156825,
+          "capped": 89
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.07421875,
+          "ci95": 0.07382954459235809,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1832.3247000000006,
+        1810.8152999999907
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "startEvent": "cagefight",
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 9.95703125,
+          "ci95": 0.018773755291114053,
+          "capped": 998
+        },
+        "next": {
+          "n": 1024,
+          "mean": 9.955078125,
+          "ci95": 0.01914361841206819,
+          "capped": 997
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.001953125,
+          "ci95": 0.003828125,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 9.955078125,
+          "ci95": 0.01914361841206819,
+          "capped": 997
+        },
+        "next": {
+          "n": 1024,
+          "mean": 9.9609375,
+          "ci95": 0.018999779635336535,
+          "capped": 1002
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0.005859375,
+          "ci95": 0.01856312008534376,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1717.3989000000238,
+        1719.112600000015
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 5.9580078125,
+          "ci95": 0.13020850449990276,
+          "capped": 65
+        },
+        "next": {
+          "n": 1024,
+          "mean": 5.9541015625,
+          "ci95": 0.1304286810966591,
+          "capped": 65
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.00390625,
+          "ci95": 0.00765625,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 5.9541015625,
+          "ci95": 0.1304286810966591,
+          "capped": 65
+        },
+        "next": {
+          "n": 1024,
+          "mean": 5.9921875,
+          "ci95": 0.13013445619246297,
+          "capped": 71
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0.0380859375,
+          "ci95": 0.07320990822989151,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1103.178599999963,
+        1123.1437999999962
+      ]
+    },
+    {
+      "tools": [
+        "maiden",
+        "rope"
+      ],
+      "startEvent": "opulence",
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 9.3828125,
+          "ci95": 0.0885453540216035,
+          "capped": 814
+        },
+        "next": {
+          "n": 1024,
+          "mean": 9.3828125,
+          "ci95": 0.0885453540216035,
+          "capped": 814
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 9.3828125,
+          "ci95": 0.0885453540216035,
+          "capped": 814
+        },
+        "next": {
+          "n": 1024,
+          "mean": 9.3671875,
+          "ci95": 0.09059250173615366,
+          "capped": 815
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.015625,
+          "ci95": 0.05562565899639294,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1684.3026999999856,
+        1771.7899000000325
+      ]
+    },
+    {
+      "tools": [
+        "guillotine",
+        "crown",
+        "skewer"
+      ],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 1024,
+          "mean": 7.123046875,
+          "ci95": 0.10860749334940585,
+          "capped": 118
+        },
+        "next": {
+          "n": 1024,
+          "mean": 7.123046875,
+          "ci95": 0.10860749334940585,
+          "capped": 118
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 1024,
+          "mean": 7.123046875,
+          "ci95": 0.10860749334940585,
+          "capped": 118
+        },
+        "next": {
+          "n": 1024,
+          "mean": 7.1181640625,
+          "ci95": 0.10847582922768996,
+          "capped": 120
+        },
+        "pairedDifference": {
+          "n": 1024,
+          "mean": -0.0048828125,
+          "ci95": 0.08362590730187174,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        1777.6600999999937,
+        1720.9909999999363
+      ]
+    }
+  ],
+  "adviser": [
+    {
+      "tools": [],
+      "old": {
+        "n": 8,
+        "mean": 5.25,
+        "ci95": 1.4225681003031103,
+        "capped": 0
+      },
+      "next": {
+        "n": 8,
+        "mean": 5.25,
+        "ci95": 1.4225681003031103,
+        "capped": 0
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        557,
+        557
+      ],
+      "elapsedMs": [
+        17419.727700000018,
+        17454.741200000008
+      ]
+    },
+    {
+      "tools": [
+        "trap"
+      ],
+      "old": {
+        "n": 8,
+        "mean": 8,
+        "ci95": 1.4816207341961707,
+        "capped": 3
+      },
+      "next": {
+        "n": 8,
+        "mean": 8,
+        "ci95": 1.4816207341961707,
+        "capped": 3
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        500,
+        500
+      ],
+      "elapsedMs": [
+        14831.177400000008,
+        15053.115800000014
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "old": {
+        "n": 8,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 8
+      },
+      "next": {
+        "n": 8,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 8
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        417,
+        433
+      ],
+      "elapsedMs": [
+        12632.992800000007,
+        12318.337399999975
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "old": {
+        "n": 8,
+        "mean": 8.75,
+        "ci95": 1.4225681003031103,
+        "capped": 4
+      },
+      "next": {
+        "n": 8,
+        "mean": 8.75,
+        "ci95": 1.4225681003031103,
+        "capped": 4
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        504,
+        504
+      ],
+      "elapsedMs": [
+        11971.885699999984,
+        11855.055500000017
+      ]
+    },
+    {
+      "tools": [
+        "maiden",
+        "rope"
+      ],
+      "old": {
+        "n": 8,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 8
+      },
+      "next": {
+        "n": 8,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 8
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        589,
+        589
+      ],
+      "elapsedMs": [
+        47233.44069999989,
+        47612.234000000055
+      ]
+    },
+    {
+      "tools": [
+        "guillotine",
+        "crown",
+        "skewer"
+      ],
+      "old": {
+        "n": 8,
+        "mean": 8,
+        "ci95": 1.0476640682967036,
+        "capped": 2
+      },
+      "next": {
+        "n": 8,
+        "mean": 8,
+        "ci95": 1.0476640682967036,
+        "capped": 2
+      },
+      "pairedDifference": {
+        "n": 8,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        561,
+        561
+      ],
+      "elapsedMs": [
+        30219.490500000073,
+        30100.71120000002
+      ]
+    }
+  ],
+  "limitations": "Synthetic seeded games, expected capped Rainbow objective, no prices or wall-clock game actions. Paired descriptive confidence intervals across several tool sets, not evidence of real profit/hour. Adviser budget is recorded and may be below production (400–1600). Starting offers hide the unobserved board from both advisers. Adaptive gifts are experimental and not used by full-MC comparisons.",
+  "gameInput": false
+}

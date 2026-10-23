@@ -1,0 +1,94 @@
+{
+  "build": "0.2.20-local.28",
+  "measuredAt": "2026-10-23T07:55:00.508Z",
+  "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+  "environment": {
+    "electron": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) TartarusOptimized/0.2.20-local.28 Chrome/152.0.7977.130 Electron/44.5.1 Safari/537.36",
+    "logicalCpus": 12
+  },
+  "baseline": "/sandbox/tartarus-before-28/js/",
+  "measurement": "Alternating reader implementations, one warmup plus three timed repeats per saved frame. Full searches and calibrated reads measured in separate groups. Whole-frame results must match exactly.",
+  "limitations": "Stage timings only. Identical-frame tracked timings do not measure a whole game move; exclude capture, settling, simulation and actual profit. Concurrent user activity is uncontrolled.",
+  "sourceSha256": {
+    "js/scan.js": "651a2042d37b1ff16c920e8983646514ab215aabc1a8ed8782d6d57e3e27ea31",
+    "js/scan-worker.js": "584855e52d3d9323e18bb13510a22a168074e2bb35f62ff4ebd5dcdc30516622",
+    "js/scan-search-worker.js": "0fb7ef41780bf2c47888a47b39635b88b17174e82acefc1aa9c3ac77075e3996",
+    "js/ready-worker.js": "b01b3d18fc8133db0752243960e38bc1c9f64a8f86c8b2e62c046f9cc0517154",
+    "js/analyze.js": "51359280e71b70d991753e1ec1d52efb570d6dbbfd82f50aef331758cf76549d",
+    "js/scan-accelerator.js": "30d272257cd6a2146eb13a7b44d625726fd316e207bcf9ee3e8c807ef2207155",
+    "tools/scan-kernels.rs": "1f57640b05ba82735fb31487bc3adebbcb6c90eb34c3db507acb3a72d1966ee8",
+    "js/frame-readiness.js": "af9bc7b4ff1bfbbe36137fc21e376c53def54b359c67a9b9d10ef502eb77527a"
+  },
+  "wasmSha256": "f9b72eb2e40b546a332f37c12ad367ea6d7c25679fc33c42025253548dcded06",
+  "reader": {
+    "workers": 4,
+    "frames": [
+      {
+        "name": "0004-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 419,
+        "trackedMs": 168,
+        "transition": {
+          "ms": 602,
+          "mode": "full",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 437,
+        "previousTrackedMs": 162
+      },
+      {
+        "name": "0016-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 707,
+        "trackedMs": 232,
+        "transition": {
+          "ms": 415,
+          "mode": "tracked",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 973,
+        "previousTrackedMs": 249
+      }
+    ],
+    "readiness": true,
+    "readinessTimings": {
+      "currentCycleMs": 409,
+      "currentStages": [
+        "visual",
+        "visual",
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "current": 313,
+      "handoffMs": 100,
+      "previousCycleMs": 554,
+      "previousStages": [
+        "visual",
+        "visual",
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "previous": 334
+    }
+  },
+  "applicationHandoff": {
+    "values": [
+      false,
+      false,
+      true
+    ],
+    "reused": true,
+    "differentBitmap": true,
+    "handoffMs": 210
+  }
+}

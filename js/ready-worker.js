@@ -9,7 +9,11 @@ let canvas = null, context = null, checkedEpoch = null, retryAt = 0;
 // GPU-backed game bitmap back for each individual source pixel.
 const samples = new OffscreenCanvas(32, 48), sampleContext = samples.getContext('2d', { willReadFrequently: false });
 self.onmessage = async ({ data }) => {
-  if ('calibrate' in data) { detector.calibrate(data.calibrate); checkedEpoch = null; retryAt = 0; return; }
+  if ('calibrate' in data) {
+    const c = data.calibrate;
+    detector.calibrate(c ? { ...c, sample: c.fastSample || c.sample } : null);
+    checkedEpoch = null; retryAt = 0; return;
+  }
   const { id, bitmap, epoch } = data;
   const started = performance.now();
   try {
@@ -22,13 +26,14 @@ self.onmessage = async ({ data }) => {
           canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
           context = canvas.getContext('2d', { willReadFrequently: true });
         }
+        context.clearRect(0, 0, canvas.width, canvas.height);
         context.drawImage(bitmap, 0, 0);
         img = context.getImageData(0, 0, canvas.width, canvas.height);
       }
       return img;
     };
-    const sample = self.TartarusFrameReadiness.sampleBitmap(bitmap, C.loc, S, sampleContext)
-      || self.TartarusFrameReadiness.sample(pixels(), C.loc, S);
+    const sample = C.fastSample ? (self.TartarusFrameReadiness.sampleBitmap(bitmap, C.loc, S, sampleContext)
+      || self.TartarusFrameReadiness.sampleFast(pixels(), C.loc, S)) : self.TartarusFrameReadiness.sample(pixels(), C.loc, S);
     const stable = detector.observe({ epoch, time: performance.now(), valid: true, sample });
     if (checkedEpoch !== epoch) { checkedEpoch = epoch; retryAt = 0; }
     if (!stable || performance.now() < retryAt) {
@@ -59,6 +64,6 @@ self.onmessage = async ({ data }) => {
     const handoff = ready ? { width: img.width, height: img.height, loc: { ...C.loc, score: fit.score }, board, doors,
       days: S.readDays(img, sharp, C.loc, self.TARTARUS_SCAN), decision } : null;
     self.postMessage({ id, ready, prepared: handoff, probe: { stage: 'semantic', ms: performance.now() - started } });
-  } catch { self.postMessage({ id, ready: false }); }
+  } catch (error) { self.postMessage({ id, ready: false, probe: { stage: 'error', error: String(error?.message || error) } }); }
   finally { bitmap.close(); }
 };

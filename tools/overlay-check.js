@@ -220,7 +220,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
               full.getContext('2d').putImageData(frame.img, 0, 0);
               const bitmap = full.transferToImageBitmap();
               try {
-                const exact = TartarusFrameReadiness.sample(frame.img, firstFrame.calibration.loc, TartarusScan);
+                const exact = TartarusFrameReadiness.sampleFast(frame.img, firstFrame.calibration.loc, TartarusScan);
                 const small = TartarusFrameReadiness.sampleBitmap(bitmap, firstFrame.calibration.loc, TartarusScan, context) || exact;
                 if (exact.some((value, i) => value !== small[i])) throw new Error('Tiny readiness surface changed sampled pixels');
               } finally { bitmap.close(); }
@@ -299,6 +299,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     return child;
   };
   let launcher = launch();
+  let fakeActivity = null;
   const sockets = [];
   let browser;
   try {
@@ -446,7 +447,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     assert.equal(await evaluate('window.solverWarmCount'), workerInfo.limit, 'Auto-sized solver workers were not prepared on entry before the first picture');
     assert.equal(workerInfo.allocated, workerInfo.limit);
     console.log('PASS: capture and warm workers start on board entry; enabling log detection alone stays idle.');
-    await evaluate('TartarusAnalyzer.readTreasure=async()=>({ok:false});TartarusCapture.captureNow("board")');
+    await evaluate(`(async()=>{TartarusAnalyzer.readTreasure=async()=>({ok:false});for(let i=0;i<3;i++){if(await TartarusCapture.captureNow('board'))return true;await new Promise(r=>setTimeout(r,100));}throw new Error('Fake-window stream did not produce a frame: '+JSON.stringify(TartarusCapture.state));})()`);
     for (let i = 0; i < 200 && !await evaluate('!!TartarusAnalyzer.desktopSnapshot().lastRead'); i++) await pause(25);
     assert.ok(await evaluate('TartarusCapture.state.frames > 0 && !!TartarusAnalyzer.image()'));
     console.log('PASS: actual Windows window capture through the direct bitmap/reader pipeline.');
@@ -485,6 +486,10 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     for (let i = 0; i < 100 && !hasPicture(); i++) await pause(25);
     assert.ok(hasPicture(), 'background screenshot recording was lost');
     console.log('PASS: screenshot history is saved outside the advice path.');
+    // Offline benchmarks can last longer than the production idle timeout.
+    // Keep the isolated fake game active using its log, without capture hits:
+    // only S16FullPathCheck is a screenshot trigger at this point.
+    fakeActivity = setInterval(() => fs.appendFileSync(log, '[2026.10.17-01.00.02:000] TLLua: S16BoardMain Run\n'), 5000);
 
     const pixels = await evaluate(`(async()=>{
       const stats=[];
@@ -500,7 +505,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
         const tiny=new OffscreenCanvas(32,48).getContext('2d',{willReadFrequently:false});
         for(const s of [0.63,0.675,0.81]){
           const loc={s,tx:200.123,ty:150.456};
-          const wanted=TartarusFrameReadiness.sample(full,loc,TartarusScan);
+          const wanted=TartarusFrameReadiness.sampleFast(full,loc,TartarusScan);
           const got=TartarusFrameReadiness.sampleBitmap(bitmapCheck,loc,TartarusScan,tiny);
           if(!got||wanted.some((value,i)=>value!==got[i]))throw new Error('GPU readiness sample differs at '+width+' scale '+s);
         }
@@ -543,6 +548,11 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     let appReadiness = null;
     if (frames.length >= 2) {
       const readiness = await evaluate(`(async()=>{
+        const replies=[],originalPost=Worker.prototype.postMessage;
+        Worker.prototype.postMessage=function(data,...args){
+          if(data&&'calibrate' in data&&!this._readinessCheck){this._readinessCheck=true;this.addEventListener('message',e=>{if('ready' in e.data)replies.push(e.data);});}
+          return originalPost.call(this,data,...args);
+        };
         const urls=${JSON.stringify(frames.slice(0, 2).map((frame) => frame.url))};
         const load=async(url)=>createImageBitmap(await(await fetch(url)).blob());
         const first=await load(urls[0]);
@@ -554,7 +564,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
           for(let i=0;i<3;i++)if(await TartarusAnalyzer.probeFrame(old,{epoch:98765}))throw new Error('Application accepted an unchanged old frame');
           for(let i=0;i<3;i++){
             const ready=await TartarusAnalyzer.probeFrame(next,{epoch:98765});values.push(ready);
-            if(ready!==(i===2))throw new Error('Application readiness bridge returned '+JSON.stringify(values));
+            if(ready!==(i===2))throw new Error('Application readiness bridge returned '+JSON.stringify({values,replies}));
             await new Promise(resolve=>setTimeout(resolve,110));
           }
           const start=performance.now(),result=await TartarusAnalyzer.readFrameDirect(next);handoffMs=Math.round(performance.now()-start);
@@ -564,7 +574,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
           const normal=await TartarusAnalyzer.readFrameDirect(another);
           if(!normal.ok||TartarusAnalyzer.readerInfo().fromProbe)throw new Error('Analyzer reused readings for a different bitmap');
           differentBitmap=true;
-        }finally{old.close();next.close();}
+        }finally{old.close();next.close();Worker.prototype.postMessage=originalPost;}
         return {values,reused,differentBitmap,handoffMs};
       })()`);
       assert.deepEqual(readiness.values,[false,false,true]);
@@ -575,7 +585,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
       const reportAt = process.argv.indexOf('--reader-report');
       if (reportAt >= 0) {
         const { createHash } = require('node:crypto');
-        const sources = ['js/scan.js', 'js/scan-worker.js', 'js/scan-search-worker.js', 'js/ready-worker.js', 'js/analyze.js', 'js/scan-accelerator.js', 'tools/scan-kernels.rs'];
+        const sources = ['js/scan.js', 'js/scan-worker.js', 'js/scan-search-worker.js', 'js/frame-readiness.js', 'js/ready-worker.js', 'js/analyze.js', 'js/scan-accelerator.js', 'tools/scan-kernels.rs'];
         const sha = (file) => createHash('sha256').update(fs.readFileSync(path.resolve(ROOT, file))).digest('hex');
         const report = { build: require('../desktop/package.json').version, measuredAt: new Date().toISOString(), cpu: require('node:os').cpus()[0].model,
           environment: await evaluate('({electron:navigator.userAgent,logicalCpus:navigator.hardwareConcurrency})'),
@@ -797,6 +807,7 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     }
     assert.ok(!/runtime error:|adapter error:|console error/.test(output),output);
   } finally {
+    if (fakeActivity) clearInterval(fakeActivity);
     if (browser && browser.ws.readyState === WebSocket.OPEN) browser.ws.send(JSON.stringify({ id: 999999, method: 'Browser.close' }));
     for (const ws of sockets) ws.close();
     for (let i = 0; launcher.exitCode === null && i < 50; i++) await pause(100);

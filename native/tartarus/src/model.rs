@@ -301,6 +301,8 @@ pub struct Chaining {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub initial_inmates_pending: bool,
     pub rng: u32,
     pub params: Arc<Params>,
     pub day: i32,

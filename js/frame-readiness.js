@@ -26,16 +26,34 @@
     });
     return out;
   }
+  // Odd integer strides put every destination pixel exactly on a source-pixel
+  // centre. Two nearest-neighbour GPU draws then match the CPU sampler even
+  // at fractional board scales, without thousands of per-pixel draw commands.
+  function fastGrid(img, loc, S) {
+    return sampleBoxes(img, loc, S).map(([x0, y0, x1, y1]) => {
+      const odd = n => { const step = Math.max(1, Math.floor(n)); return step % 2 ? step : step - 1; };
+      const dx = odd((x1 - x0) / 32), dy = odd((y1 - y0) / 24);
+      return { x: Math.round((x0 + x1 - dx * 32) / 2), y: Math.round((y0 + y1 - dy * 24) / 2), dx, dy };
+    });
+  }
+  function sampleFast(img, loc, S) {
+    const out = new Uint8Array(1536); let i = 0;
+    for (const grid of fastGrid(img, loc, S)) for (let y = 0; y < 24; y++) for (let x = 0; x < 32; x++) {
+      const px = Math.max(0, Math.min(img.width - 1, grid.x + x * grid.dx + (grid.dx - 1) / 2));
+      const py = Math.max(0, Math.min(img.height - 1, grid.y + y * grid.dy + (grid.dy - 1) / 2));
+      const offset = (py * img.width + px) * 4;
+      out[i++] = Math.round(0.299 * img.data[offset] + 0.587 * img.data[offset + 1] + 0.114 * img.data[offset + 2]);
+    }
+    return out;
+  }
   // Copy exactly the same source pixels into a tiny surface. The first two
   // stability observations need 6 KiB of RGBA, not the entire game window.
   function sampleBitmap(bitmap, loc, S, context) {
-    const boxes = sampleBoxes(bitmap, loc, S);
-    if (boxes.some(([x0, y0, x1, y1]) => x0 + 0.5 < 0 || y0 + 0.5 < 0
-      || x1 + 0.5 > bitmap.width || y1 + 0.5 > bitmap.height || x1 <= x0 || y1 <= y0)) return null;
+    const grids = fastGrid(bitmap, loc, S);
+    if (grids.some(g => g.x < 0 || g.y < 0 || g.x + g.dx * 32 > bitmap.width || g.y + g.dy * 24 > bitmap.height)) return null;
     context.imageSmoothingEnabled = false;
-    // Integer source coordinates avoid GPU rounding at fractional scales.
-    // All draws stay on the GPU and share one small readback below.
-    samplePoints(bitmap, loc, S, (i, x, y) => context.drawImage(bitmap, x, y, 1, 1, i % 32, i >> 5, 1, 1));
+    context.clearRect(0, 0, 32, 48);
+    grids.forEach((g, i) => context.drawImage(bitmap, g.x, g.y, g.dx * 32, g.dy * 24, 0, i * 24, 32, 24));
     const pixels = context.getImageData(0, 0, 32, 48).data, out = new Uint8Array(1536);
     for (let i = 0; i < out.length; i++) {
       const offset = i * 4;
@@ -77,7 +95,7 @@
       },
     };
   }
-  const api = { create, sample, sampleBitmap, difference, controlsFor };
+  const api = { create, sample, sampleFast, sampleBitmap, difference, controlsFor };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TartarusFrameReadiness = api;
 })(typeof self !== 'undefined' ? self : globalThis);

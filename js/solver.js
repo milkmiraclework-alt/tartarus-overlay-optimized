@@ -64,6 +64,8 @@
     office: null, // always 'bestow' or 'instigate' at the office (only to measure the habit)
     giftRank: null, // null scores the gifts on the spot; or a fixed order
     giftChain: true, // Opulence's chain first: Horn for a Rainbow, then Thumb Ring, then Vintage (pickGift)
+    preySurvival: true, // value a Consume's actual chance to break either side of a Prey link
+    giftAdaptive: false, // bounded paired gift trials, enabled only after independent quality checks
   };
 
   // Tuned weights for each kind of run: drills with tool rewards on or off.
@@ -844,11 +846,23 @@
   }
 
   // The prey mark an action would end, valued (0 if none).
-  function linkLoss(st, ctx, inmate, certain) {
+  function linkLoss(st, ctx, inmate, certain, option) {
     const link = inmate && T.linkOf(st, inmate.id);
     if (!link) return 0;
-    // A Lion that devours re-rolls its beast; 1 in 4 times it stays a Lion.
-    return linkValue(st, ctx, link) * (certain || link.prey === inmate.id ? 1 : 0.75);
+    if (!ctx.P.preySurvival) return linkValue(st, ctx, link) * (certain || link.prey === inmate.id ? 1 : 0.75);
+    if (certain || !option) return linkValue(st, ctx, link);
+    const gain = T.gainFor(st, st.position, option).gain;
+    const kept = link.lion === inmate.id ? 'lion' : link.preyBeast;
+    const weights = st.params.beastWeights.map(w => Math.max(0, w)), sum = weights.reduce((a, b) => a + b, 0);
+    const same = sum > 0 ? weights[BEASTS.indexOf(kept)] / sum : Number(kept === BEASTS[0]);
+    const odds = [ctx.saw ? 0.25 : 0, ctx.whip ? 0.35 : 0, st.chaining && ctx.collar ? 0.8 : 0];
+    let loss = 0;
+    for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) for (let c = 0; c < 2; c++) {
+      const p = (a ? odds[0] : 1 - odds[0]) * (b ? odds[1] : 1 - odds[1]) * (c ? odds[2] : 1 - odds[2]);
+      const rainbow = inmate.tier + gain + a + b + c >= RAINBOW;
+      loss += p * (rainbow ? Number(st.vault.length < T.VAULT_SLOTS) : ctx.fight ? 0 : 1 - same);
+    }
+    return linkValue(st, ctx, link) * loss;
   }
 
   // Today's devour options for the warden's inmate, valued. Best first.
@@ -859,12 +873,12 @@
     const { comp, crowd } = composition(st, st.position);
     const tier = here.inmate.tier;
     const beast = beastIndex(here.inmate.beast);
-    const own = linkLoss(st, ctx, here.inmate, false);
     const chained = !!st.chaining;
     return (chained ? T.chainOptions(st) : T.startOptions(st))
       .map((o) => {
         const target = st.cells[o.cell];
         const meal = o.scratch ? target.hidden : target.inmate;
+        const own = linkLoss(st, ctx, here.inmate, false, o);
         const mealLink = o.scratch ? 0 : linkLoss(st, ctx, meal, true);
         const sameLink = own && mealLink && T.linkOf(st, here.inmate.id) === T.linkOf(st, meal.id);
         const loss = sameLink ? Math.max(own, mealLink) : own + mealLink;
@@ -909,6 +923,32 @@
   // up can add a Rainbow before the run ends (report 330).
   const lastMoveMade = (st) => st.day >= st.maxDays && !st.chaining && !T.canDevourNow(st) && !canSwapNow(st) && !(T.canHuntNow && T.canHuntNow(st));
 
+  function pairedGift(st, ctx, options, random) {
+    const rows = options.map(id => ({ id, vals: [], mean: 0 }));
+    const score = (row, seed) => {
+      if (row.id === 'wine' && row.vals.length) return row.vals[0];
+      const trial = forkTrial(st); trial.rng = seed;
+      if (!T.choose(trial, row.id).ok) return 0;
+      return boardValue(trial, { v: ctx.v, R: trial.vault.length >= T.VAULT_SLOTS ? ctx.v[T.SUPREME] : ctx.v[RAINBOW] * ctx.P.rainbowMult });
+    };
+    const sample = targets => {
+      for (let k = 0; k < 3; k++) {
+        const seed = (random() * 4294967296) >>> 0;
+        for (const row of targets) row.vals.push(score(row, seed));
+      }
+      for (const row of targets) row.mean = row.vals.reduce((a, b) => a + b, 0) / row.vals.length;
+    };
+    sample(rows);
+    const top = rows.slice().sort((a, b) => b.mean - a.mean);
+    if (top.length > 1) {
+      const diff = top[0].vals.map((v, i) => v - top[1].vals[i]);
+      const gap = top[0].mean - top[1].mean;
+      const se = Math.sqrt(diff.reduce((sum, d) => sum + (d - gap) ** 2, 0) / (diff.length * (diff.length - 1)));
+      if (se > 0 && gap < 1.96 * se) sample(top.slice(0, 2));
+    }
+    return rows.reduce((best, row) => row.mean > best.mean ? row : best, rows[0]).id;
+  }
+
   function pickGift(st, ctx, options, random) {
     const P = ctx.P;
     if (P.giftRank) return P.giftRank.find((id) => options.includes(id)) || options[0];
@@ -947,6 +987,7 @@
       if (left >= 3 && options.includes('ring') && st.cells.some((c) => c.sealed && c.n !== T.OFFICE)) return 'ring';
       if (left >= 2 && options.includes('wine') && st.cells.some((c) => !c.sealed && c.inmate && c.inmate.tier < T.SUPREME - 1)) return 'wine';
     }
+    if (P.giftAdaptive) return pairedGift(st, ctx, options, random);
     let best = null;
     for (const id of options) {
       let value = 0;
@@ -1249,6 +1290,7 @@
   function hideFuture(st, seed) {
     const random = rng32(seed);
     st.rng = (random() * 4294967296) >>> 0;
+    if (st.initialInmatesPending) T.sampleInitialBoard(st, seed);
     for (const c of st.cells) {
       // An event whose kind the player can't see (behind a door, or in an
       // open cell) is any of them, evenly. Events to come turn up in the

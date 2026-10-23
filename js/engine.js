@@ -2231,6 +2231,22 @@
     return out;
   }
 
+  // A starting offer hides the entire board. Sample that uncertainty for a
+  // solver trial; never overwrite an observed or already started position.
+  function sampleInitialBoard(state, seed) {
+    if (!state.initialInmatesPending) return false;
+    delete state.initialInmatesPending;
+    if (state.day !== 1 || state.position !== OFFICE || state.tools.length
+      || state.cells.some(c => c.n !== OFFICE && (!c.sealed || c.inmate || c.hidden || c.event || c.nest || c.scratch || c.atLeast))) return false;
+    spawnEvent(state, state.params.eventStartChance);
+    const stream = { rng: (seed ^ 0x243f6a88) >>> 0 }, p = state.params;
+    const count = Math.max(0, p.startInmates - (rand(stream) * 100 < p.startInmatesFewer ? 1 : 0));
+    const free = shuffle(stream, state.cells.filter(c => c.n !== OFFICE && c.sealed && !c.event));
+    for (const c of free.slice(0, count)) place(state, c.n, BEASTS[pickIndex(stream, p.beastWeights)], pickIndex(stream, p.startWeights));
+    beginDay(state);
+    return true;
+  }
+
   // ---------- Saves ----------
 
   function serialize(state) {
@@ -2314,7 +2330,7 @@
     VERSION, CELL_COUNT, OFFICE, SUPREME, RAINBOW, VAULT_SLOTS, TIERS, BEASTS, BEAST_INFO, FOOD_CHAIN, SECOND_MEAL, TOOLS, TOOL_IDS, BEAST_TOOLS, toolWeight, GIFTS, GIFT_IDS,
     EVENTS, EVENT_IDS, EVENT_POOL, USURP, PORTION_INMATES, APPETITE_TRIES, APPETITE_ODDS, INSTIGATE_EVENTS, INSTIGATE_EVENTS_EMPTY, instigateCells, instigateCount, CROW_CELLS, HUNT_BELOW, FREEDOM_CELLS, OBJECTIVES, OBJECTIVE_IDS, START_EVENTS,
     SCENARIOS, DEFAULT_PARAMS, PARAM_FIELDS,
-    newGame, randomSeed, normalizeParams, serialize, deserialize,
+    newGame, randomSeed, normalizeParams, serialize, deserialize, sampleInitialBoard,
     patrol: bounded(patrol),
     resolveEvent: bounded(acted(followed(resolveEvent))),
     devour: bounded(acted(devour)),

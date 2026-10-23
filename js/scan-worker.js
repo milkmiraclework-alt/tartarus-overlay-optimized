@@ -60,7 +60,7 @@ async function scanBoard(img, ref, force = false, lang = 'en', fromProbe = null,
   if (!pool && !trackingEnabled) return S.scan(img, ref, { lang });
   const started = Date.now();
   const gray = S.grayOf(img), sharp = S.blur(gray, img.width, img.height, 1);
-  const prepared = S.prepareBoardSearch(img, gray, ref, sharp);
+  let prepared = S.prepareBoardSearch(img, gray, ref, sharp, 1);
   let loc = trackingEnabled && !force ? tracker.locate(prepared, img) : null;
   // Only the exact accepted bitmap gets a handoff from the analyzer's
   // WeakMap. Different captures, 4K downscales and other languages reread.
@@ -71,6 +71,7 @@ async function scanBoard(img, ref, force = false, lang = 'en', fromProbe = null,
   } else fromProbe = null;
   detail.fromProbe = !!fromProbe;
   if (!loc) {
+    prepared = S.prepareBoardSearch(img, gray, ref, sharp);
     const sMin = Math.max(0.12, Math.min((0.3 * prepared.W) / prepared.bw, (0.35 * prepared.H) / prepared.bh));
     let minLevel = 0;
     while (minLevel + 1 < prepared.levels.length && sMin / prepared.levels[minLevel + 1].f >= 0.2) minLevel++;
@@ -160,7 +161,7 @@ self.onmessage = async (e) => {
     // No RGBA copy or PNG encode is needed on the page's main thread.
     const preview = canvas ? canvas.transferToImageBitmap() : null;
     const calibration = trackingEnabled && result.ok && result.warden && !result.loc.byLabels
-      ? { loc: result.loc, width: img.width, height: img.height, sample: self.TartarusFrameReadiness.sample(img, result.loc, self.TartarusScan), controls: self.TartarusFrameReadiness.controlsFor(result) } : null;
+      ? { loc: result.loc, width: img.width, height: img.height, sample: self.TartarusFrameReadiness.sample(img, result.loc, self.TartarusScan), fastSample: self.TartarusFrameReadiness.sampleFast(img, result.loc, self.TartarusScan), controls: self.TartarusFrameReadiness.controlsFor(result) } : null;
     self.postMessage({ id, result, preview, calibration, tracking: trackingEnabled ? { ...tracker.info(), accelerated: self.TartarusScan.kernelsReady(), ...detail } : null }, preview ? [preview] : []);
   } catch (err) {
     self.postMessage({ id, kind, error: String((err && err.message) || err) });

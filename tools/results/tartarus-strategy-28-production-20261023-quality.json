@@ -1,0 +1,293 @@
+{
+  "checkedAt": "2026-10-23T07:52:50.131Z",
+  "version": "0.2.20-local.28",
+  "prefix": "STRATEGY28-HOLDOUT-B",
+  "baseline": "local.27 frozen WASM",
+  "variants": [
+    {
+      "name": "local27"
+    },
+    {
+      "name": "preySurvival",
+      "overrides": {
+        "preySurvival": true,
+        "giftAdaptive": false
+      }
+    },
+    {
+      "name": "adaptiveGifts",
+      "overrides": {
+        "preySurvival": true,
+        "giftAdaptive": true
+      }
+    }
+  ],
+  "selectedSets": [
+    0,
+    2,
+    3
+  ],
+  "productionGiftAdaptive": false,
+  "equivalenceGames": 48,
+  "policyGamesPerVariant": 384,
+  "adviserGamesPerVariant": 6,
+  "adviserRolloutsPerAction": 400,
+  "adviserDecisions": 728,
+  "elapsedMs": 155615,
+  "policy": [
+    {
+      "tools": [],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 128,
+          "mean": 3.0234375,
+          "ci95": 0.32133275913797893,
+          "capped": 1
+        },
+        "next": {
+          "n": 128,
+          "mean": 3.0234375,
+          "ci95": 0.32133275913797893,
+          "capped": 1
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 128,
+          "mean": 3.0234375,
+          "ci95": 0.32133275913797893,
+          "capped": 1
+        },
+        "next": {
+          "n": 128,
+          "mean": 3.03125,
+          "ci95": 0.3238765979334975,
+          "capped": 1
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0.0078125,
+          "ci95": 0.08829879603176619,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        113.12260000000009,
+        111.10619999999973
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "startEvent": "cagefight",
+      "prey": {
+        "old": {
+          "n": 128,
+          "mean": 9.921875,
+          "ci95": 0.06378962312712615,
+          "capped": 122
+        },
+        "next": {
+          "n": 128,
+          "mean": 9.8828125,
+          "ci95": 0.09872339280115558,
+          "capped": 121
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": -0.0390625,
+          "ci95": 0.0765625,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 128,
+          "mean": 9.8828125,
+          "ci95": 0.09872339280115558,
+          "capped": 121
+        },
+        "next": {
+          "n": 128,
+          "mean": 9.8671875,
+          "ci95": 0.09318193626879183,
+          "capped": 118
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": -0.015625,
+          "ci95": 0.09472451184717205,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        89.32300000000009,
+        93.40620000000001
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "startEvent": null,
+      "prey": {
+        "old": {
+          "n": 128,
+          "mean": 6.2265625,
+          "ci95": 0.4039326461755815,
+          "capped": 11
+        },
+        "next": {
+          "n": 128,
+          "mean": 6.2265625,
+          "ci95": 0.4039326461755815,
+          "capped": 11
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": 0,
+          "ci95": 0,
+          "capped": 0
+        }
+      },
+      "adaptiveOverPrey": {
+        "old": {
+          "n": 128,
+          "mean": 6.2265625,
+          "ci95": 0.4039326461755815,
+          "capped": 11
+        },
+        "next": {
+          "n": 128,
+          "mean": 6.046875,
+          "ci95": 0.41011289961198444,
+          "capped": 11
+        },
+        "pairedDifference": {
+          "n": 128,
+          "mean": -0.1796875,
+          "ci95": 0.2648685079333379,
+          "capped": 0
+        }
+      },
+      "elapsedMs": [
+        0,
+        95.26800000000105,
+        100.12530000000004
+      ]
+    }
+  ],
+  "adviser": [
+    {
+      "tools": [],
+      "old": {
+        "n": 2,
+        "mean": 4.5,
+        "ci95": 2.94,
+        "capped": 0
+      },
+      "next": {
+        "n": 2,
+        "mean": 4.5,
+        "ci95": 2.94,
+        "capped": 0
+      },
+      "pairedDifference": {
+        "n": 2,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        135,
+        135
+      ],
+      "elapsedMs": [
+        24206.225,
+        31921.985099999998
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "crown",
+        "muzzle"
+      ],
+      "old": {
+        "n": 2,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 2
+      },
+      "next": {
+        "n": 2,
+        "mean": 10,
+        "ci95": 0,
+        "capped": 2
+      },
+      "pairedDifference": {
+        "n": 2,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        107,
+        107
+      ],
+      "elapsedMs": [
+        23933.046199999982,
+        23657.31610000001
+      ]
+    },
+    {
+      "tools": [
+        "trap",
+        "saw",
+        "whip"
+      ],
+      "old": {
+        "n": 2,
+        "mean": 7,
+        "ci95": 5.88,
+        "capped": 1
+      },
+      "next": {
+        "n": 2,
+        "mean": 7,
+        "ci95": 5.88,
+        "capped": 1
+      },
+      "pairedDifference": {
+        "n": 2,
+        "mean": 0,
+        "ci95": 0,
+        "capped": 0
+      },
+      "moves": [
+        122,
+        122
+      ],
+      "elapsedMs": [
+        24887.971000000005,
+        25926.597899999993
+      ]
+    }
+  ],
+  "limitations": "Synthetic seeded games, expected capped Rainbow objective, no prices or wall-clock game actions. Paired descriptive confidence intervals across several tool sets, not evidence of real profit/hour. Adviser budget is recorded and may be below production (400–1600). Starting offers hide the unobserved board from both advisers. Adaptive gifts are experimental and not used by full-MC comparisons.",
+  "gameInput": false
+}
