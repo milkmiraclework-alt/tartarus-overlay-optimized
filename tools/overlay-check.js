@@ -9,9 +9,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
-const { prepareRuntime } = require('./overlay-runtime.js');
+const { prepareRuntime, sourceExecutable } = require('./overlay-runtime.js');
 const ROOT = path.resolve(__dirname, '..');
-const installed = process.env.TARTARUS_OVERLAY_EXE || path.join(process.env.LOCALAPPDATA, 'Programs/tartarus-overlay/Tartarus Overlay.exe');
+const standaloneAt = process.argv.indexOf('--standalone');
+const standalone = standaloneAt >= 0 ? path.resolve(process.argv[standaloneAt + 1]) : null;
+const installed = sourceExecutable();
 const profile = path.join(ROOT, 'sandbox', `overlay-check-${process.pid}-${Date.now()}`);
 fs.mkdirSync(profile, { recursive: true });
 fs.writeFileSync(path.join(profile, 'settings.json'), JSON.stringify({ consent: { withdrawn: true }, record: true }));
@@ -234,13 +236,24 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
 (async () => {
   // Preparing explicitly also checks that the runtime is built without
   // changing any file in the installed application.
-  prepareRuntime(installed);
+  if (!standalone) prepareRuntime(installed);
   const env = { ...process.env };
   if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = '1';
   let output = '';
-  const launchArgs = [path.join(__dirname, 'local-overlay.js'), '--test', '--offscreen', `--user-data=${profile}`, '--game-title=TartarusOverlayCheckOnly', `--log=${log}`, `--test-window=${standIn}`, '--remote-debugging-port=0'];
+  let sitePort = 0;
+  if (standalone) {
+    const probe = require('node:net').createServer();
+    await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve); });
+    sitePort = probe.address().port;
+    await new Promise((resolve) => probe.close(resolve));
+    delete env.ELECTRON_RUN_AS_NODE;
+    env.TARTARUS_INSTALLED_ASAR = path.join(profile, 'missing-original', 'app.asar');
+    env.TARTARUS_OVERLAY_EXE = path.join(profile, 'missing-original', 'Tartarus Overlay.exe');
+    env.LOCALAPPDATA = path.join(profile, 'missing-original-localappdata');
+  }
+  const launchArgs = [...(standalone ? [`--site-port=${sitePort}`, '--offline-check'] : [path.join(__dirname, 'local-overlay.js')]), '--test', '--offscreen', `--user-data=${profile}`, '--game-title=TartarusOverlayCheckOnly', `--log=${log}`, `--test-window=${standIn}`, '--remote-debugging-port=0'];
   const launch = () => {
-    const child = spawn(process.execPath, launchArgs, { cwd: ROOT, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(standalone || process.execPath, launchArgs, { cwd: standalone ? path.dirname(standalone) : ROOT, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdout.on('data', (s) => { output += s; });
     child.stderr.on('data', (s) => { output += s; });
     return child;
@@ -269,6 +282,21 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     }
     assert.deepEqual(await evaluate('({fast:TartarusDesktop.fast,runtime:!!window.__tartarusFastRuntime,hidden:TartarusAnalyzer.desktopSnapshot().background})'), { fast: true, runtime: true, hidden: true }, output);
     console.log('PASS: local source runtime, native dependencies and a single hidden backend.');
+    if (standalone) {
+      assert.ok(output.includes('bundled analyzer: '), 'Packaged app did not serve its own analyzer');
+      assert.ok(output.includes('win32=true'), 'Packaged native libraries did not load');
+      const offlineOCR = await evaluate(`(async()=>{
+        if(!window.TARTARUS_BUNDLED_OCR)throw new Error('Offline OCR configuration missing');
+        const start=performance.now(),worker=await TartarusAnalyzer.prepareOCR();
+        if(!worker)throw new Error('Bundled OCR did not initialize');
+        const canvas=document.createElement('canvas');canvas.width=680;canvas.height=110;
+        const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,680,110);ctx.fillStyle='black';ctx.font='42px Arial';ctx.fillText('TARTARUS 12345',20,68);
+        const result=await worker.recognize(canvas),text=result.data.text.trim();
+        if(!/TARTARUS\\s+12345/i.test(text))throw new Error('Offline OCR text mismatch: '+text);
+        return {text,ms:Math.round(performance.now()-start),version:(await(await fetch('/bundle.json')).json()).version};
+      })()`);
+      console.log('PASS: standalone native libraries and bundled OCR work with missing original-install paths and all external HTTP requests blocked: '+JSON.stringify(offlineOCR));
+    }
     if (process.argv.includes('--contracts-only')) {
       const overlayTarget = targets.find(t => t.url.endsWith('/overlay.html'));
       assert.ok(overlayTarget, 'Overlay renderer was not created');

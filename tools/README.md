@@ -829,8 +829,8 @@ node tools/overlay-check.js
 The reader baseline is an optional saved copy of `js/scan.js`. These checks
 cover log wakeups during active reads, partial/rotated logs, bounded catchup,
 capture deadlines, exact grayscale/blur/reader output, and the real local
-Electron capture/advice path. The overlay check needs Node 22+ and an installed
-overlay, uses its own profile and stand-in window, and sends no game input.
+Electron capture/advice path. The overlay check needs Node 22+ and a source runtime or a built standalone
+EXE (--standalone PATH), uses its own profile and stand-in window, and sends no game input.
 
 The fast desktop pipeline removes the follow page and image BroadcastChannel
 hop, transfers frames directly to the reader, and sends structured advice to
@@ -1219,3 +1219,51 @@ the readiness worker, exact-bitmap handoff, other-bitmap rejection, 1080p/4K
 pixel parity and worker cleanup. Stage timing reports exclude animation waits,
 simulation time and game profit. `node tools/overlay-check.js` additionally
 checks the advice/overlay UI, full-budget persistent cache and app restart.
+
+## Standalone Windows distribution (local.25)
+
+`Build-Standalone.cmd` installs the locked desktop build dependencies, stages
+the local analyzer/OCR, builds x64 installer and portable EXEs, and verifies
+the packaged sources, assets and native modules. No installed author's app
+is read. Runtime users need neither Node nor Rust. `-SkipInstall` is useful
+after the first build; `-UnpackedOnly` skips generating release artifacts.
+
+```
+node tools/bundled-site-check.js
+node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe"
+node tools/standalone-smoke.js
+```
+
+The first check verifies manifest hashes, read-only asset serving, path
+and origin rejection, plus independence from an unrelated occupied port. The second drives the actual
+packaged app through capture/advice/cache restart with an isolated profile
+and fake game. It blocks external HTTP and invalidates original-install
+paths. The third launches the actual self-extracting portable executable
+from a different directory, checks its native libraries/offline OCR, and
+verifies an unrelated listener on the same port remains untouched. Test runs never register game
+hotkeys or send game input. `desktop/dist/standalone-build.json` and
+`SHA256SUMS.txt` record the built source and release artifact hashes.
+
+## Monte Carlo CPU profile
+
+```
+node tools/solver-profile.js --rounds 64 --repeats 3 --out sandbox/solver-profile
+```
+
+This profiles the production solver on 24 deterministic synthetic positions
+across three tool sets, early/middle/late patrols, offers, events, chains,
+office and management decisions. Every candidate receives the requested
+number of complete remaining-game playouts. Repeated seeded sample hashes
+must match. The script writes a Chrome DevTools CPU profile and a report;
+it never opens the game or changes the production rollout budget.
+
+The [2026-10-23 profile](results/tartarus-solver-20261023-profile.json) attributes
+about 56% of weighted stack samples to policy evaluation, 26% to state
+copying, 14% to engine actions and 3% to garbage collection. These are
+single-worker Node sampling observations with profiling overhead and
+uncontrolled background load, not exact CPU instruction shares or game
+latencies. A possible Rust backend should own state, engine actions, policy
+evaluation and complete playout batches together, returning the existing
+paired raw samples. No native solver or measured native speedup is included
+in local.25; rules, RNG streams, sample values, rankings, cancellation and
+forecast promotion need parity checks before replacing the JavaScript path.

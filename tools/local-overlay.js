@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* Use the installed overlay with this checkout's optimized site. The
- * installed Electron also supplies Node, so no npm install is needed.
+/* Source-development launcher. Prefer the project's own Electron runtime.
+ * Distributed standalone executables serve their bundled assets directly.
  * Start-Local-Overlay.cmd [--check] [overlay arguments...]
  */
 'use strict';
@@ -17,7 +17,7 @@ const args = process.argv.slice(2);
 const checkOnly = args.includes('--check');
 const background = args.includes('--background');
 const appArgs = args.filter((arg) => !['--check', '--background', '--console'].includes(arg));
-const executable = process.env.TARTARUS_OVERLAY_EXE || path.join(process.env.LOCALAPPDATA || '', 'Programs', 'tartarus-overlay', 'Tartarus Overlay.exe');
+const executable = require('./overlay-runtime.js').sourceExecutable();
 let server = null;
 let overlay = null;
 
@@ -37,7 +37,7 @@ async function localFilesMatch() {
 }
 
 async function main() {
-  if (!fs.existsSync(executable)) throw new Error(`Overlay not found: ${executable}\nSet TARTARUS_OVERLAY_EXE to the installed executable.`);
+  if (!fs.existsSync(executable)) throw new Error('Electron runtime not found. Use the standalone release or build it with tools/build-standalone.ps1.');
   // Reuse a local server only after checking that it serves this code.
   try {
     if (!await localFilesMatch()) throw new Error('Another site uses port 8090. Stop that server and run this launcher again.');

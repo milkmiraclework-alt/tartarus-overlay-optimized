@@ -2,11 +2,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-// A private Electron runtime loads this checkout's desktop code. The user's
-// installed executable/resources are read only and remain untouched.
+// Development runtime: prefer the project's own Electron. Older source
+// checkouts can still explicitly use an existing installation as a fallback.
+function sourceExecutable() {
+  if (process.env.TARTARUS_OVERLAY_EXE) return process.env.TARTARUS_OVERLAY_EXE;
+  const own = path.resolve(__dirname, '../desktop/node_modules/electron/dist/electron.exe');
+  return fs.existsSync(own) ? own : path.join(process.env.LOCALAPPDATA || '', 'Programs/tartarus-overlay/Tartarus Overlay.exe');
+}
 function prepareRuntime(installedExe) {
   const source = path.dirname(installedExe);
-  const target = path.resolve(__dirname, '../desktop/dist/local-runtime');
+  const target = path.resolve(__dirname, path.basename(installedExe).toLowerCase() === 'electron.exe' ? '../desktop/dist/source-runtime' : '../desktop/dist/local-runtime');
   const executable = path.join(target, path.basename(installedExe));
   const stamp = `${fs.statSync(installedExe).size}:${fs.statSync(installedExe).mtimeMs}`;
   fs.mkdirSync(target, { recursive: true });
@@ -51,4 +56,4 @@ function prepareRuntime(installedExe) {
   } finally { process.noAsar = noAsar; }
   return { executable, installedAsar: path.join(source, 'resources/app.asar') };
 }
-module.exports = { prepareRuntime };
+module.exports = { prepareRuntime, sourceExecutable };

@@ -1,7 +1,15 @@
 # Tartarus Overlay (desktop app, local only for now)
 
-The optimized local build is `0.2.19-local.24`, based on the author's source
+The optimized local build is `0.2.19-local.25`, based on the author's source
 revision `3f937ec894094c24b37f2701dbe4b6ff4f480cce` (22 October 2026).
+Standalone installer and portable executables include their own Electron,
+native libraries, analyzer assets, WASM and English OCR. No original overlay,
+Node.js or Rust install is required to run them. The existing `%APPDATA%\Tartarus Overlay`
+profile and `http://localhost:8090` storage origin retain settings, confirmations
+and the persistent Monte Carlo cache. Close the older overlay before launching.
+Port 8090 must be available; a conflict reports an error instead of silently
+switching origins and losing access to stored state. `--site-port=N` is an
+explicit development/test override.
 `lib/upstream-version.json` records the imported revision: the Git branch HEAD
 can still be older while local changes are being developed. Source changes
 are checked asynchronously at startup and every six hours; a notice links to
@@ -47,7 +55,7 @@ always-on-top card over the game, so one monitor is enough.
 
 ## How it's built
 
-The local launcher uses `--fast`: one background analysis runtime and the
+The standalone executable defaults to fast mode: one background analysis runtime and the
 overlay, with a small settings window and board correction opened on demand.
 The installed application's ordinary shortcut still uses the public website
 and the original two-page mode. Both use the same rules and solver.
@@ -170,33 +178,27 @@ If those change on the site, update the adapter too, or the overlay goes quiet.
 
 ## Run it
 
-To use an installed Windows overlay with the optimized code in this checkout,
-quit any running overlay from its tray menu and double-click
-`Start-Local-Overlay.cmd` in the repository root. It starts the local server,
-checks that it serves this checkout's solver, and launches the local app
-with `--fast --site=http://localhost:8090/`. On first use it copies the installed
-Electron runtime to `desktop/dist/local-runtime/` and creates a small bootstrap
-that loads this checkout's `desktop/main.js`. Dependencies are resolved from
-the installed app; its files are unchanged. The launcher runs in the background;
-quitting the overlay stops the server that the launcher started. There is no need to
-install Node, npm dependencies or rebuild the app: the installed Electron
-supplies the runtime. Start with this file each time to use local changes;
-the ordinary installed shortcut continues to load the public site.
+Download the installer or portable EXE from the fork's Releases. Close any
+previous overlay from its tray menu, then run the downloaded executable.
+The standalone process serves its own packaged analyzer internally; no
+separate Node process, browser tab or original application is needed.
+After a source build, double-click `Start-Local-Overlay.cmd` to launch
+`desktop/dist/win-unpacked/Tartarus Optimized.exe`.
 
-The default install path is
-`%LOCALAPPDATA%\Programs\tartarus-overlay\Tartarus Overlay.exe`.
-For another location, set `TARTARUS_OVERLAY_EXE` to that executable's path.
-`Start-Local-Overlay.cmd --check` verifies the local files without opening the
-overlay. Use `--console` to keep a diagnostic console open. Background startup
-logs are in `desktop/dist/local-launch.log` and `local-launch-error.log`.
-After code changes, restart this launcher or reload the app's pages.
+For source development, the launcher prefers this project's own Electron
+under `desktop/node_modules/electron/dist`. `Start-Local-Overlay.cmd --console`
+serves the working checkout and starts its hidden analyzer; `--check`
+checks local source assets without opening an overlay. Explicit
+`TARTARUS_OVERLAY_EXE` overrides and the legacy installed-runtime fallback
+remain available only for source-development compatibility. Release EXEs
+never consult them. Launcher logs are in `desktop/dist/local-launch*.log`.
 
-For development from source instead:
+From `desktop`:
 
 ```
-npm install            # once
-npm start              # against the live site
-npm run local          # fast mode; first run node tools/serve.js --port 8090
+npm ci
+node node_modules/electron/install.js  # Electron 44's explicit runtime installer
+npm run local                        # with node tools/serve.js --port 8090 at repo root
 ```
 
 VS Code's terminal sets `ELECTRON_RUN_AS_NODE=1`; unset it first if Electron
@@ -224,15 +226,30 @@ publication target. Publishing a source fork does not upload an installer.
 
 ## Build
 
-`npm run dist` makes `dist/Tartarus-Overlay-Setup-<version>.exe` (per-user
-install, no admin). This packages the Electron shell; the supported optimized
-source workflow is `Start-Local-Overlay.cmd`, which also serves the checkout's
-reader/solver assets. A standalone optimized installer needs those assets and
-a fork-specific update feed before it can be distributed.
+From the repository root, `Build-Standalone.cmd` (or
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-standalone.ps1`)
+installs locked dependencies, stages the analyzer and offline OCR, and builds
+`desktop/dist/Tartarus-Optimized-{Setup,Portable}-<version>-x64.exe`.
+Builds require Node.js 22.12+ with npm. `-SkipInstall` reuses installed build
+dependencies; `-UnpackedOnly` builds the unpacked application for testing.
+`npm ci` then `npm run dist` from `desktop` is the direct builder workflow.
+The checked-in WASM needs no Rust compiler. Runtime assets come from this
+checkout and pinned npm packages, never an installed author's application.
+
+`tools/standalone-manifest.js` verifies packaged sources/assets and native
+modules, rejects source changes during the build, and writes
+`standalone-build.json` plus `SHA256SUMS.txt`. The manual GitHub Actions
+workflow `Standalone Windows overlay` builds and uploads the same artifacts.
+Release binaries are currently unsigned. Standalone fast mode retains the
+read-only upstream notice, with no automatic replacement by the author's app.
 
 ## Test
 
-`node tools/overlay-check.js` (Node 22+ and an installed overlay) exercises the
+`node tools/overlay-check.js --standalone "desktop/dist/win-unpacked/Tartarus Optimized.exe"`
+exercises the built application with missing original-install paths and all
+external HTTP requests blocked, including real offline OCR. No real game is
+used. The ordinary `node tools/overlay-check.js` uses the source-development
+runtime; both exercise the
 real Electron app with an isolated profile, a fake game window and log. It
 checks native log wakeups, real window capture, exact reader pixels at 1080p
 and 4K, superseded frames, recording, full-budget advice delivery, compact

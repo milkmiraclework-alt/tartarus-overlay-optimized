@@ -1,0 +1,744 @@
+{
+  "checkedAt": "2026-10-23T05:10:21.513Z",
+  "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+  "logicalProcessors": 12,
+  "node": "v22.16.0",
+  "roundsPerCandidate": 64,
+  "repeats": 3,
+  "singleThread": true,
+  "elapsedMs": 44405,
+  "cpuMs": 32312,
+  "sourceSha256": {
+    "js/engine.js": "1623a734c290b442de0298c3c1efb4f6b6a0d7247ea273402a4baaca34c0f2e9",
+    "js/solver.js": "dd44e2a1e59c60b5a0b0cc3adfd4bf3eb7ad9ae2d12f3db63a853ea4542303be"
+  },
+  "sampledMs": 44463,
+  "samples": 32083,
+  "stages": [
+    {
+      "stage": "policy evaluation",
+      "ms": 24749,
+      "percent": 55.66
+    },
+    {
+      "stage": "state copying",
+      "ms": 11592,
+      "percent": 26.07
+    },
+    {
+      "stage": "engine actions",
+      "ms": 6072,
+      "percent": 13.66
+    },
+    {
+      "stage": "garbage collection",
+      "ms": 1382,
+      "percent": 3.11
+    },
+    {
+      "stage": "other",
+      "ms": 663,
+      "percent": 1.49
+    },
+    {
+      "stage": "hidden-state sampling",
+      "ms": 5,
+      "percent": 0.01
+    }
+  ],
+  "functions": [
+    {
+      "name": "copyData",
+      "file": "js/solver.js",
+      "line": 1194,
+      "ms": 8058,
+      "percent": 18.12
+    },
+    {
+      "name": "feed",
+      "file": "js/solver.js",
+      "line": 327,
+      "ms": 3502,
+      "percent": 7.88
+    },
+    {
+      "name": "forkTrial",
+      "file": "js/solver.js",
+      "line": 1211,
+      "ms": 2392,
+      "percent": 5.38
+    },
+    {
+      "name": "decide",
+      "file": "js/solver.js",
+      "line": 1089,
+      "ms": 1717,
+      "percent": 3.86
+    },
+    {
+      "name": "rise",
+      "file": "js/solver.js",
+      "line": 302,
+      "ms": 1512,
+      "percent": 3.4
+    },
+    {
+      "name": "(garbage collector)",
+      "file": "",
+      "line": 0,
+      "ms": 1382,
+      "percent": 3.11
+    },
+    {
+      "name": "normalize",
+      "file": "js/solver.js",
+      "line": 130,
+      "ms": 1262,
+      "percent": 2.84
+    },
+    {
+      "name": "applyGift",
+      "file": "js/engine.js",
+      "line": 1855,
+      "ms": 1228,
+      "percent": 2.76
+    },
+    {
+      "name": "context",
+      "file": "js/solver.js",
+      "line": 169,
+      "ms": 1143,
+      "percent": 2.57
+    },
+    {
+      "name": "clone",
+      "file": "js/solver.js",
+      "line": 1202,
+      "ms": 1142,
+      "percent": 2.57
+    },
+    {
+      "name": "stairDelta",
+      "file": "js/solver.js",
+      "line": 462,
+      "ms": 1107,
+      "percent": 2.49
+    },
+    {
+      "name": "hasDevourOption",
+      "file": "js/engine.js",
+      "line": 1119,
+      "ms": 891,
+      "percent": 2
+    },
+    {
+      "name": "cellLabel",
+      "file": "js/engine.js",
+      "line": 402,
+      "ms": 861,
+      "percent": 1.94
+    },
+    {
+      "name": "composition",
+      "file": "js/solver.js",
+      "line": 118,
+      "ms": 790,
+      "percent": 1.78
+    },
+    {
+      "name": "freshValue",
+      "file": "js/solver.js",
+      "line": 577,
+      "ms": 738,
+      "percent": 1.66
+    },
+    {
+      "name": "patrolScores",
+      "file": "js/solver.js",
+      "line": 693,
+      "ms": 735,
+      "percent": 1.65
+    },
+    {
+      "name": "pickGift",
+      "file": "js/solver.js",
+      "line": 910,
+      "ms": 683,
+      "percent": 1.54
+    },
+    {
+      "name": "bestMeal",
+      "file": "js/solver.js",
+      "line": 396,
+      "ms": 597,
+      "percent": 1.34
+    },
+    {
+      "name": "(anonymous)",
+      "file": "js/engine.js",
+      "line": 2241,
+      "ms": 582,
+      "percent": 1.31
+    },
+    {
+      "name": "openCell",
+      "file": "js/engine.js",
+      "line": 728,
+      "ms": 534,
+      "percent": 1.2
+    },
+    {
+      "name": "doDevour",
+      "file": "js/engine.js",
+      "line": 1507,
+      "ms": 468,
+      "percent": 1.05
+    },
+    {
+      "name": "countersMeal",
+      "file": "js/engine.js",
+      "line": 59,
+      "ms": 447,
+      "percent": 1
+    },
+    {
+      "name": "rollDestinations",
+      "file": "js/engine.js",
+      "line": 965,
+      "ms": 438,
+      "percent": 0.98
+    },
+    {
+      "name": "freshActivation",
+      "file": "js/solver.js",
+      "line": 557,
+      "ms": 427,
+      "percent": 0.96
+    },
+    {
+      "name": "(anonymous)",
+      "file": "js/solver.js",
+      "line": 496,
+      "ms": 416,
+      "percent": 0.93
+    },
+    {
+      "name": "canSwapNow",
+      "file": "js/engine.js",
+      "line": 588,
+      "ms": 412,
+      "percent": 0.93
+    },
+    {
+      "name": "beginDay",
+      "file": "js/engine.js",
+      "line": 985,
+      "ms": 412,
+      "percent": 0.93
+    },
+    {
+      "name": "pickIndex",
+      "file": "js/engine.js",
+      "line": 431,
+      "ms": 406,
+      "percent": 0.91
+    },
+    {
+      "name": "choose",
+      "file": "js/engine.js",
+      "line": 1814,
+      "ms": 396,
+      "percent": 0.89
+    },
+    {
+      "name": "swapValue",
+      "file": "js/solver.js",
+      "line": 494,
+      "ms": 384,
+      "percent": 0.86
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "no-tools:offer",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "offer",
+      "candidates": 3,
+      "ms": [
+        841.4,
+        812.2,
+        848.9
+      ],
+      "digest": "df38e8078c0a8a49c70788e9d501b8b59174ade002bcf128e70c15bb26c2f68b",
+      "chainCache": {
+        "entries": 3111,
+        "partitions": 4,
+        "hits": 34315,
+        "misses": 3111,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:early-patrol",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        757.1,
+        1210.4,
+        1536.2
+      ],
+      "digest": "d6730087077b9379a661e204a23e4ba0cf9f209999cbd3169dc0ec9d0eec1f17",
+      "chainCache": {
+        "entries": 3280,
+        "partitions": 4,
+        "hits": 33300,
+        "misses": 3280,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:manage",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "manage",
+      "candidates": 2,
+      "ms": [
+        463.2,
+        568.4,
+        1851.4
+      ],
+      "digest": "59b04e779243188a5bb079268a8178f8e24699b6ee69167d502e5bb236446a71",
+      "chainCache": {
+        "entries": 2166,
+        "partitions": 4,
+        "hits": 20912,
+        "misses": 2166,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:event",
+      "day": 5,
+      "maxDays": 20,
+      "phase": "event",
+      "candidates": 2,
+      "ms": [
+        410.5,
+        354.7,
+        497.4
+      ],
+      "digest": "56b62c4fea078b955ceecd9ebc6a72b9cdc47152001961dabe7b36dfe3501191",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:chain",
+      "day": 5,
+      "maxDays": 20,
+      "phase": "chain",
+      "candidates": 2,
+      "ms": [
+        450,
+        341.5,
+        464.4
+      ],
+      "digest": "078c811e695abfc8adb4b66ed3dcd70ce51cfee133990dc33c43e470ec7ddca4",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:middle-patrol",
+      "day": 8,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        441,
+        385.4,
+        433.9
+      ],
+      "digest": "740a941c9c73b6ee71785e533db3e1199f82f7d6be7a5a734d6d00c6a9c125f8",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:office",
+      "day": 14,
+      "maxDays": 20,
+      "phase": "office",
+      "candidates": 2,
+      "ms": [
+        192.5,
+        129.2,
+        192.8
+      ],
+      "digest": "30594ca892c02f83a179224f0ee8e85f8e47bd842429c9dfc170a7a93e6f4dc6",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "no-tools:late-patrol",
+      "day": 15,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        188,
+        162.2,
+        241.8
+      ],
+      "digest": "0c6c003ee46a1284d9afd31fa6e71e270057dacbb2a4f5f54f1949f13443a42c",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:offer",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "offer",
+      "candidates": 3,
+      "ms": [
+        2536.4,
+        670.1,
+        919
+      ],
+      "digest": "f4fd4aa4ad142cdf9d22285011437efd6a83120bffefdc09fdc3b310d9450635",
+      "chainCache": {
+        "entries": 705,
+        "partitions": 14,
+        "hits": 198043,
+        "misses": 17089,
+        "clears": 3
+      }
+    },
+    {
+      "name": "maul+crown+skewer:early-patrol",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        1144.1,
+        604.6,
+        683.2
+      ],
+      "digest": "0f285084b06716978f29246a426ed374442da03e7b7bf60e72136db953127327",
+      "chainCache": {
+        "entries": 3018,
+        "partitions": 3,
+        "hits": 30537,
+        "misses": 3018,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:manage",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "manage",
+      "candidates": 2,
+      "ms": [
+        931.9,
+        377.1,
+        590.9
+      ],
+      "digest": "90de022f0dc1801330b3078069b3290f2793cded3399f7a1165d316125a084e0",
+      "chainCache": {
+        "entries": 2276,
+        "partitions": 4,
+        "hits": 23293,
+        "misses": 2276,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:office",
+      "day": 3,
+      "maxDays": 20,
+      "phase": "office",
+      "candidates": 2,
+      "ms": [
+        1668.1,
+        373,
+        403.7
+      ],
+      "digest": "e4decc4effb0ae29ca24050c749757b9f8aed880725bfc260f409b87c8a777cd",
+      "chainCache": {
+        "entries": 1869,
+        "partitions": 4,
+        "hits": 17993,
+        "misses": 1869,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:event",
+      "day": 6,
+      "maxDays": 20,
+      "phase": "event",
+      "candidates": 2,
+      "ms": [
+        552.9,
+        292.8,
+        324.5
+      ],
+      "digest": "a026295f09102a71e208340d7c26b086f0b5535a304b06878c43af34fc9256ea",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:middle-patrol",
+      "day": 8,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        670.3,
+        377.7,
+        1345.7
+      ],
+      "digest": "baef87bcc40b2065970eca9ee2be143793337a5211425128d9ee4f9ac30b3cae",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:chain",
+      "day": 13,
+      "maxDays": 20,
+      "phase": "chain",
+      "candidates": 2,
+      "ms": [
+        229.4,
+        161.9,
+        242.3
+      ],
+      "digest": "0c091bb2a37bacdb86e0cf141905953665ebf4592bf544d0ddd6f1df063e8203",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "maul+crown+skewer:late-patrol",
+      "day": 15,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        365.7,
+        159.4,
+        171.4
+      ],
+      "digest": "71b1ec0b5909dfa84dfa23e761748f355b487647bb8f9f58a018d4d4175b31a6",
+      "chainCache": {
+        "entries": 0,
+        "partitions": 0,
+        "hits": 0,
+        "misses": 0,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:offer",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "offer",
+      "candidates": 3,
+      "ms": [
+        1675.1,
+        574.2,
+        638.8
+      ],
+      "digest": "da017b5ed16031574a17462dc3fa0798058597ff2130d8b36c1d9fd51a954263",
+      "chainCache": {
+        "entries": 3726,
+        "partitions": 4,
+        "hits": 40415,
+        "misses": 3726,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:early-patrol",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        1925.3,
+        567.6,
+        809.6
+      ],
+      "digest": "57eaaad2a5d661df89f759c3f42859c77a848a27a48e311495de661b64fd7b1a",
+      "chainCache": {
+        "entries": 3678,
+        "partitions": 4,
+        "hits": 41859,
+        "misses": 3678,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:manage",
+      "day": 1,
+      "maxDays": 20,
+      "phase": "manage",
+      "candidates": 2,
+      "ms": [
+        1064.3,
+        412,
+        465.9
+      ],
+      "digest": "cd8d342fbb7a08d565180fd038afae7f56c4043f3a9eef8ae292574285510d8b",
+      "chainCache": {
+        "entries": 2253,
+        "partitions": 4,
+        "hits": 24886,
+        "misses": 2253,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:event",
+      "day": 4,
+      "maxDays": 20,
+      "phase": "event",
+      "candidates": 2,
+      "ms": [
+        640.3,
+        333.2,
+        553.3
+      ],
+      "digest": "1eaf99782f2780fdc3f82181c841587abdc97114588444c113eb6563b499a5c2",
+      "chainCache": {
+        "entries": 1189,
+        "partitions": 4,
+        "hits": 16660,
+        "misses": 1189,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:middle-patrol",
+      "day": 8,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        762.9,
+        499.5,
+        582.3
+      ],
+      "digest": "26d1a810f2676109af056f45cad1aa3f25ca1a8cfa0ec5a2aaefd6494eb59469",
+      "chainCache": {
+        "entries": 2822,
+        "partitions": 4,
+        "hits": 31708,
+        "misses": 2822,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:chain",
+      "day": 10,
+      "maxDays": 20,
+      "phase": "chain",
+      "candidates": 2,
+      "ms": [
+        378.1,
+        256.2,
+        373.8
+      ],
+      "digest": "0f92cf147037b9ebfecab5fe312d9203966f60f9ecfc873962e224edb2aa0f5e",
+      "chainCache": {
+        "entries": 1414,
+        "partitions": 3,
+        "hits": 15624,
+        "misses": 1414,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:office",
+      "day": 11,
+      "maxDays": 20,
+      "phase": "office",
+      "candidates": 2,
+      "ms": [
+        529.2,
+        210.6,
+        314.6
+      ],
+      "digest": "8ec63dc8a791046e668dc4d3d50800b0d86933c2b53ae506c1d24fa2427eaa4f",
+      "chainCache": {
+        "entries": 1397,
+        "partitions": 3,
+        "hits": 14603,
+        "misses": 1397,
+        "clears": 1
+      }
+    },
+    {
+      "name": "saw+whip+collar+revenge:late-patrol",
+      "day": 15,
+      "maxDays": 20,
+      "phase": "patrol",
+      "candidates": 3,
+      "ms": [
+        528.9,
+        319.1,
+        417.1
+      ],
+      "digest": "f5f0cdb7adbd2e62769dd402a9a0b72dc0e43d30b5f085094c00ed8e46adebe2",
+      "chainCache": {
+        "entries": 8034,
+        "partitions": 1,
+        "hits": 145049,
+        "misses": 8034,
+        "clears": 1
+      }
+    }
+  ],
+  "limitations": "Synthetic deterministic fixtures, full remaining game horizon. CPU profiling adds overhead. One Node worker, not Electron end-to-end latency, parallel scaling, a native comparison or real-game profit. Percentages are weighted stack samples, not exact instruction counters."
+}

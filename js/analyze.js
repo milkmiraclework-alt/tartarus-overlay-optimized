@@ -2500,15 +2500,20 @@
   function ocrWorker() {
     if (!ocr) {
       const generation = ocrGeneration;
+      const bundled = window.TARTARUS_BUNDLED_OCR;
       ocr = new Promise((resolve, reject) => {
         if (window.Tesseract) return resolve();
         const sc = document.createElement('script');
-        sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+        sc.src = bundled ? bundled.script : 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
         sc.onload = resolve;
         sc.onerror = () => reject(new Error('its script didn’t download'));
         document.head.appendChild(sc);
       })
-        .then(() => generation === ocrGeneration ? window.Tesseract.createWorker('eng') : null)
+        .then(() => generation === ocrGeneration ? window.Tesseract.createWorker('eng', 1, bundled ? {
+          workerPath: new URL(bundled.worker, location.href).href,
+          corePath: new URL(bundled.core, location.href).href,
+          langPath: new URL(bundled.language, location.href).href,
+        } : {}) : null)
         .then(async (worker) => {
           if (generation !== ocrGeneration) { if (worker) await worker.terminate(); return null; }
           ocrError = ''; ocrReady = !!worker;

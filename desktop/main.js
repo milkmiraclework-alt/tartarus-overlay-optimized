@@ -35,7 +35,10 @@ const arg = (name) => {
   return a ? a.slice(p.length) : null;
 };
 const flag = (name) => process.argv.includes(`--${name}`);
-const FAST = flag('fast');
+const BUNDLED_ROOT = path.join(process.resourcesPath, 'site');
+const STANDALONE = app.isPackaged && fs.existsSync(path.join(BUNDLED_ROOT, 'bundle.json'));
+const OPTIMIZED = require('./package.json').name === 'tartarus-overlay-optimized';
+const FAST = flag('fast') || STANDALONE;
 app.on('web-contents-created', (_, contents) => contents.setAudioMuted(true));
 const localDependency = (name) => {
   try { return require(name); } catch (error) {
@@ -45,9 +48,9 @@ const localDependency = (name) => {
 };
 
 const LIVE_SITE = 'https://blahdot3h.github.io/tartarus-simulator/';
-let SITE = arg('site') || process.env.TARTARUS_SITE || LIVE_SITE;
+let SITE = STANDALONE ? 'http://localhost:8090/' : arg('site') || process.env.TARTARUS_SITE || LIVE_SITE;
 if (!SITE.endsWith('/')) SITE += '/';
-const SITE_URL = new URL(SITE);
+let SITE_URL = new URL(SITE);
 // #region game-title
 const GAME_TITLE = new RegExp(arg('game-title') || '^Torchlight: Infinite\\s*$');
 // #endregion
@@ -64,12 +67,13 @@ const HOTKEYS = { overlay: 'Control+Alt+O', analyzer: 'Control+Alt+A', capture: 
 const ICON = path.join(__dirname, 'build', 'icon.png');
 
 if (arg('user-data')) app.setPath('userData', path.resolve(arg('user-data')));
+else if (OPTIMIZED) app.setPath('userData', path.join(app.getPath('appData'), 'Tartarus Overlay'));
 // The app's windows sit behind a full-screen game, hidden or not. Chromium
 // treats a covered window as not drawn, and a window shown again could show
 // an old, narrow picture of its page: every window draws as if in front.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-app.setAppUserModelId('io.github.blahdot3h.tartarus-overlay');
+app.setAppUserModelId(OPTIMIZED ? 'io.github.milkmiraclework-alt.tartarus-overlay-optimized' : 'io.github.blahdot3h.tartarus-overlay');
 
 // ---------- Settings ----------
 
@@ -1419,6 +1423,27 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   app.whenReady().then(async () => {
+    if (TEST && flag('offline-check')) session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+      const url = new URL(details.url);
+      callback({ cancel: /^https?:$/.test(url.protocol) && !['localhost', '127.0.0.1'].includes(url.hostname) });
+    });
+    if (STANDALONE) {
+      try {
+        const port = arg('site-port') === null ? 8090 : Number(arg('site-port'));
+        if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid local analyzer origin port.');
+        SITE = `http://localhost:${port}/`; SITE_URL = new URL(SITE);
+        const bundled = require('./lib/bundled-site.js').create(BUNDLED_ROOT, SITE_URL.origin);
+        // Preserve the old origin/cache while serving only our packaged
+        // assets. No listening port and no external local server are used.
+        session.defaultSession.protocol.handle('http', bundled.handle);
+        app.once('before-quit', () => session.defaultSession.protocol.unhandle('http'));
+        note(`bundled analyzer: ${bundled.manifest.version}, assets=${Object.keys(bundled.manifest.files).length}`);
+      } catch (error) {
+        note('bundled analyzer startup failed:', error.message);
+        if (!TEST) dialog.showErrorBox('Tartarus Optimized', error.message);
+        app.exit(1); return;
+      }
+    }
     note(`start: version ${app.getVersion()}, site ${SITE}${DEV ? ', debug' : ''}${TEST ? ', test' : ''}, foreground check ${win32 ? 'on' : 'off'}`);
     allowCapture();
     pruneRecords();

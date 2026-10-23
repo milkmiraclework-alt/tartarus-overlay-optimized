@@ -1,7 +1,7 @@
 {
-  "name": "tartarus-overlay",
-  "productName": "Tartarus Overlay",
-  "version": "0.2.19-local.24",
+  "name": "tartarus-overlay-optimized",
+  "productName": "Tartarus Optimized",
+  "version": "0.2.19-local.25",
   "description": "Auto Screenshot Mode for the Tartarus board analyzer, with the advice in an overlay over the game.",
   "author": "CoffeeBns",
   "license": "UNLICENSED",
@@ -10,7 +10,8 @@
   "scripts": {
     "start": "electron .",
     "local": "electron . --fast --site=http://localhost:8090/",
-    "dist": "electron-builder --win --publish never"
+    "dist": "node ../tools/stage-overlay.js && electron-builder --win --x64 --publish never",
+    "dist:dir": "node ../tools/stage-overlay.js && electron-builder --win --x64 --dir --publish never"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
@@ -18,11 +19,13 @@
   },
   "devDependencies": {
     "electron": "44.5.1",
-    "electron-builder": "26.16.1"
+    "electron-builder": "26.16.1",
+    "tesseract.js": "5.1.1",
+    "@tesseract.js-data/eng": "1.0.0"
   },
   "build": {
-    "appId": "io.github.blahdot3h.tartarus-overlay",
-    "productName": "Tartarus Overlay",
+    "appId": "io.github.milkmiraclework-alt.tartarus-overlay-optimized",
+    "productName": "Tartarus Optimized",
     "files": [
       "main.js",
       "preload.js",
@@ -36,14 +39,34 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ],
       "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "Tartarus-Overlay-Setup-${version}.${ext}"
+      "artifactName": "Tartarus-Optimized-Setup-${version}-${arch}.${ext}",
+      "shortcutName": "Tartarus Optimized",
+      "uninstallDisplayName": "Tartarus Optimized"
+    },
+    "executableName": "Tartarus Optimized",
+    "extraResources": [
+      {
+        "from": "dist/bundled-site",
+        "to": "site",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*.node",
+      "node_modules/koffi/**/*.dll"
+    ],
+    "portable": {
+      "artifactName": "Tartarus-Optimized-Portable-${version}-${arch}.${ext}"
     }
   }
 }

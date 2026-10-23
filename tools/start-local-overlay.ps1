@@ -1,9 +1,17 @@
 param([switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot
+$standalone = Join-Path $workspace 'desktop\dist\win-unpacked\Tartarus Optimized.exe'
+if (!$CheckOnly -and (Test-Path -LiteralPath $standalone)) {
+  Start-Process -FilePath $standalone -WorkingDirectory (Split-Path -Parent $standalone) -WindowStyle Hidden | Out-Null
+  exit 0
+}
 $launcher = Join-Path $PSScriptRoot 'local-overlay.js'
 $executable = $env:TARTARUS_OVERLAY_EXE
-if (!$executable) { $executable = Join-Path $env:LOCALAPPDATA 'Programs\tartarus-overlay\Tartarus Overlay.exe' }
+if (!$executable) {
+  $ownElectron = Join-Path $workspace 'desktop\node_modules\electron\dist\electron.exe'
+  $executable = if (Test-Path -LiteralPath $ownElectron) { $ownElectron } else { Join-Path $env:LOCALAPPDATA 'Programs\tartarus-overlay\Tartarus Overlay.exe' }
+}
 $logDirectory = Join-Path $workspace 'desktop\dist'
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 $env:ELECTRON_RUN_AS_NODE = '1'
