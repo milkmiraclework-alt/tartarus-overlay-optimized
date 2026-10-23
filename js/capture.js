@@ -312,7 +312,11 @@
     const rule = rules[h.rule];
     if (!rule) return;
     const m = rule.re.exec(h.line);
-    const hit = { kind: rule.kind, at, text: m ? (m[1] || m[0]).slice(0, 120) : '', line: h.line };
+    // The first card-arrival sound after an explicit action belongs to that
+    // action. Later sounds without a matching action still start a new epoch.
+    const continuation = !!(window.TartarusDesktop && window.TartarusDesktop.fast && rule.kind === 'board'
+      && burst && burst.kind === 'board' && burst.expectedPresentation && /UI_S16_Card_Up\b/.test(h.line));
+    const hit = { kind: rule.kind, at, text: m ? (m[1] || m[0]).slice(0, 120) : '', line: h.line, continuation };
     setState({ hits: state.hits + 1 });
     emit('hit', hit);
     emit('seen', { at, line: h.line, kind: rule.kind });
@@ -337,7 +341,8 @@
     // Keep each event's full fallback deadline. Verified screen readiness
     // may release it early; later short events do not stack another wait.
     if (!burst) burst = { kind: rule.kind, rank: rule.rank, settle: 0, deadline: 0, hits: [], timer: 0, probeTimer: 0, started: performance.now() };
-    burst.epoch = ++burstEpoch;
+    if (!continuation) burst.epoch = ++burstEpoch;
+    burst.expectedPresentation = !continuation && /Btn_S16Board_ActionCell|UI_S16_Click_(?:Eat|Cancel)\b|Btn_S16Board_EventPop_Confirm/.test(h.line);
     if (rule.rank > burst.rank) {
       burst.kind = rule.kind;
       burst.rank = rule.rank;
@@ -345,18 +350,23 @@
     const wait = Math.max(250, rule.settle * pace);
     burst.settle = Math.max(burst.settle, wait);
     const now = performance.now();
-    burst.lastEventAt = now; burst.probeUnavailable = false;
+    if (!continuation) burst.lastEventAt = now;
+    burst.probeUnavailable = false;
     burst.deadline = Math.max(burst.deadline, now + wait);
     if (burst.hits.length < 40) burst.hits.push({ kind: hit.kind, at: hit.at, text: hit.text });
     clearTimeout(burst.timer);
     const delay = window.TartarusDesktop && window.TartarusDesktop.fast ? Math.max(0, burst.deadline - now) : burst.settle;
     const b = burst;
     burst.timer = setTimeout(() => fire(b), delay);
-    clearTimeout(burst.probeTimer);
-    if (readinessProbe && b.kind === 'board' && delay >= 900) b.probeTimer = setTimeout(() => probe(b), Math.max(250, 450 * pace));
+    if (!continuation) { clearTimeout(burst.probeTimer); b.probeTimer = 0; }
+    const firstProbe = Math.max(75, 150 * pace);
+    if (readinessProbe && b.kind === 'board' && delay >= firstProbe + 200 && !b.probeTimer && !b.probing) {
+      b.probeTimer = setTimeout(() => probe(b), firstProbe);
+    }
   }
 
   async function probe(b) {
+    b.probeTimer = 0;
     if (burst !== b || !readinessProbe || b.probing || !mayCapture()) return;
     b.probing = true;
     const epoch = b.epoch;
@@ -379,7 +389,7 @@
       b.probing = false;
       if (burst === b && readinessProbe && !b.probeUnavailable && performance.now() + 100 < b.deadline) {
         clearTimeout(b.probeTimer);
-        b.probeTimer = setTimeout(() => probe(b), Math.max(100, b.lastEventAt + Math.max(250, 450 * pace) - performance.now()));
+        b.probeTimer = setTimeout(() => probe(b), Math.max(100, b.lastEventAt + Math.max(75, 150 * pace) - performance.now()));
       }
     }
   }

@@ -511,8 +511,8 @@
 
   const solver = { workers: null, failed: false, id: 0, starts: 0, resumed: 0, st: null, key: '', cacheKey: '', cached: false, instant: null, result: null, shares: null, meta: null, goal: '', forecastAlias: null, forecastHit: false, forecastResumed: false };
   // Bump for rule/strategy imports, retain across compatible UI-only fixes.
-  const SOLVER_CACHE_REVISION = '?v=20261023rust26';
-  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=c6896f2:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
+  const SOLVER_CACHE_REVISION = '?v=20261023rust27';
+  const solverCache = FAST_DESKTOP && window.TartarusSolverCache ? window.TartarusSolverCache.create({ version: `mc-v2:rules=308b947:${SOLVER_CACHE_REVISION}:budget=${PLAYOUT_BUDGET}` }) : null;
   const forecast = { sequence: 0, generation: 0, timer: 0, active: null, plan: null, queue: [], seen: new Set(), ready: new Set(), paused: false,
     families: new Map(),
     stats: { generated: 0, completed: 0, hits: 0, resumed: 0, cancelled: 0, reused: 0, familyHits: 0, familyResumed: 0 } };
@@ -2013,9 +2013,10 @@
   // told so, sets those by hand, and can send a screen the reader didn't
   // recognize in one click, so it can learn that language (the user,
   // 2026-10-17). Set here, or from the game's log (Auto Screenshot Mode).
-  const GAME_LANGS = { en: 'English', ru: 'Russian', zh: 'Chinese' };
+  const GAME_LANGS = { en: 'English', ru: 'Russian', zh: 'Chinese', ja: 'Japanese' };
   const LANG_KEY = 'tartarus-sim:game-lang:v1';
   const LANG_NOTES = {
+    ja: 'ゲームは日本語クライアントです。分析ツールは英語クライアントで学習しています。盤面のマス、獣、レア度はどの言語でも読み取れます。当日の扉はマス番号で読み取りますが、日本語クライアントではまだ確認できていないため、「Which door to patrol」で確認してください。置き換え・捕食のボタン、所持している刑具、彩色囚人の数、刑具の選択肢、目標、開始時のカードは英語の文字で読み取るため、手動で設定してください。認識されない画面があれば、表示される「Send this screenshot」ボタンで送ってください。日本語クライアントの読み取りを学習するのに役立ちます。',
     ru: 'Игра на русском языке. Анализатор обучен на английском клиенте: клетки, звери и редкость на поле, а также двери дня (по номерам клеток), читаются на любом языке. Кнопки замены и поглощения, ваши инструменты, счётчик хроматических заключённых, предложения инструментов, цели и карты начала забега читаются по английскому тексту. Укажите их вручную, а если экран не распознан, отправьте его кнопкой «Send this screenshot», чтобы анализатор научился читать русский клиент.',
     zh: '游戏为中文客户端。分析器是基于英文客户端训练的：棋盘上的格子、野兽和稀有度，以及当天的门（按格子编号），在任何语言下都能识别；但替换和吞噬按钮、你的刑具、彩色囚犯数量、刑具选择、本局目标和开局卡牌是按英文文字识别的。请手动设置这些内容；若某个画面未被识别，请点击“Send this screenshot”发送截图，帮助分析器学会识别中文客户端。',
   };
@@ -2700,7 +2701,10 @@
       // The run's objective: its popup came just before, or this is a
       // re-roll of the run's opening offer, which keeps what was set.
       const again = model.runStart && model.step === 'choice';
-      const keep = { mode: model.mode, rewards: model.rewards, maxDays: model.maxDays, runStart: true, objective: runObjective || (again ? model.objective : 'other'), walkTiles: again ? model.walkTiles : 0, startEvent: runStartEvent || (again ? model.startEvent : 'none') };
+      const startEvent = runStartEvent || (again ? model.startEvent : 'none');
+      const card = T.START_EVENTS && T.START_EVENTS[startEvent];
+      const maxDays = again ? model.maxDays : (card && card.days) || T.DEFAULT_PARAMS.drillDays;
+      const keep = { mode: model.mode, rewards: model.rewards, maxDays, runStart: true, objective: runObjective || (again ? model.objective : 'other'), walkTiles: again ? model.walkTiles : 0, startEvent };
       runObjective = null;
       runStartEvent = null;
       model = normalize(Object.assign(blankModel(), keep));

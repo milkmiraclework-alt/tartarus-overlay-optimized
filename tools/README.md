@@ -1318,3 +1318,39 @@ with in-memory legacy/restarted/test/debug profiles. The inherited recording
 default is disabled once, explicit later opt-in persists, unrelated settings
 are retained, and disabled recording never scans/prunes historical records.
 No real user profile or startup setting is touched by this check.
+
+## Author 0.2.20 rules and capture readiness (local.27)
+
+Author revision `308b9479bcd0857a581a7e7b7917d0a8e0c5062e` updates starting
+inmates, Replace rarity/beast draws, weighted office doors and event successors.
+The JS reference and Rust/WASM engine share these rules and the newly measured
+instrument tables. Incompatible old Monte Carlo summaries use a different cache
+namespace; user instrument confirmations remain independent.
+
+`node tools/upstream-020-check.js` checks 1,088 targeted rule cases against the
+pinned author's engine and four Iron Law run transitions. A fresh clone fetches
+that exact public commit if its Git object is absent. Full Rust differential
+checks still cover 264 seeded games and 43 raw-sample Monte Carlo positions.
+
+The readiness worker now performs two inexpensive pixel observations before
+one semantic read of a stable changed screen. Integer-pixel draws into a 32x48
+accelerated surface preserve the old sampled values at fractional scales;
+clipped layouts retain the full-image sampling fallback. A software sampling
+target is deliberately avoided because GPU source readbacks per point are slow.
+The final semantic read validates board fit, inmates/warden and decision controls,
+then hands the exact immutable bitmap's readings to the main reader. Failed
+semantics retry at most four times a second; a deadline remains armed throughout.
+
+Readiness starts at 150 ms normally or 75 ms with Speed-up when the fallback
+deadline permits a 200 ms stability interval. The first card-arrival sound after
+an explicit action retains that action's epoch. A new action, skip, cancellation
+or closed mode still invalidates pending work. `node tools/readiness-check.js`
+exercises these cases and early readiness for the shorter Speed-up deadlines.
+
+Builds now go into `desktop/dist/builds/<version>/` so a running older executable
+is preserved. `tools/build-standalone.ps1` verifies the staged/native files and
+selects that directory in `local/tartarus/active-standalone.json`. Normal launch
+and `--check` use the selection. `tools/standalone-manifest.js --dist <directory>`
+checks an explicit build; the portable smoke check defaults to the current
+version's directory. Readiness timings are stage measurements on saved frames,
+not live-game animation latency, FPS or profit/hour.

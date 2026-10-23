@@ -29,7 +29,7 @@ jobs:
         with:
           name: Tartarus-Optimized-Windows-x64
           path: |
-            desktop/dist/Tartarus-Optimized-*-x64.exe
-            desktop/dist/SHA256SUMS.txt
-            desktop/dist/standalone-build.json
+            desktop/dist/builds/*/Tartarus-Optimized-*-x64.exe
+            desktop/dist/builds/*/SHA256SUMS.txt
+            desktop/dist/builds/*/standalone-build.json
           if-no-files-found: error

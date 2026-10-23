@@ -1,20 +1,45 @@
 /* Readiness evidence: a changed board, visible controls and stable fresh frames. */
 (function (root) {
   'use strict';
-  function sample(img, loc, S) {
+  function sampleBoxes(img, loc, S) {
     const corners = [[0, 0], [5, 0], [0, 3], [5, 3]].map(([u, v]) => S.at(loc, u, v));
     const left = Math.min(...corners.map((p) => p[0])) - 40 * loc.s;
     const right = Math.max(...corners.map((p) => p[0])) + 40 * loc.s;
     const top = Math.min(...corners.map((p) => p[1])) - 80 * loc.s;
     const bottom = Math.max(...corners.map((p) => p[1])) + 30 * loc.s;
-    const boxes = [[left, top, right, bottom], [left, bottom, right, img.height - 1]];
-    const out = new Uint8Array(32 * 24 * boxes.length);
+    return [[left, top, right, bottom], [left, bottom, right, img.height - 1]];
+  }
+  function samplePoints(img, loc, S, take) {
+    const boxes = sampleBoxes(img, loc, S);
     let i = 0;
     for (const box of boxes) for (let y = 0; y < 24; y++) for (let x = 0; x < 32; x++) {
       const px = Math.max(0, Math.min(img.width - 1, Math.round(box[0] + (box[2] - box[0]) * (x + 0.5) / 32)));
       const py = Math.max(0, Math.min(img.height - 1, Math.round(box[1] + (box[3] - box[1]) * (y + 0.5) / 24)));
-      const offset = (py * img.width + px) * 4;
-      out[i++] = Math.round(0.299 * img.data[offset] + 0.587 * img.data[offset + 1] + 0.114 * img.data[offset + 2]);
+      take(i++, px, py);
+    }
+  }
+  function sample(img, loc, S) {
+    const out = new Uint8Array(1536);
+    samplePoints(img, loc, S, (i, x, y) => {
+      const offset = (y * img.width + x) * 4;
+      out[i] = Math.round(0.299 * img.data[offset] + 0.587 * img.data[offset + 1] + 0.114 * img.data[offset + 2]);
+    });
+    return out;
+  }
+  // Copy exactly the same source pixels into a tiny surface. The first two
+  // stability observations need 6 KiB of RGBA, not the entire game window.
+  function sampleBitmap(bitmap, loc, S, context) {
+    const boxes = sampleBoxes(bitmap, loc, S);
+    if (boxes.some(([x0, y0, x1, y1]) => x0 + 0.5 < 0 || y0 + 0.5 < 0
+      || x1 + 0.5 > bitmap.width || y1 + 0.5 > bitmap.height || x1 <= x0 || y1 <= y0)) return null;
+    context.imageSmoothingEnabled = false;
+    // Integer source coordinates avoid GPU rounding at fractional scales.
+    // All draws stay on the GPU and share one small readback below.
+    samplePoints(bitmap, loc, S, (i, x, y) => context.drawImage(bitmap, x, y, 1, 1, i % 32, i >> 5, 1, 1));
+    const pixels = context.getImageData(0, 0, 32, 48).data, out = new Uint8Array(1536);
+    for (let i = 0; i < out.length; i++) {
+      const offset = i * 4;
+      out[i] = Math.round(0.299 * pixels[offset] + 0.587 * pixels[offset + 1] + 0.114 * pixels[offset + 2]);
     }
     return out;
   }
@@ -35,7 +60,7 @@
     if (!menu) return '';
     return menu + '|' + JSON.stringify({ warden: result.warden.cell, cells: result.cells.map((cell) => [cell.kind, cell.beast, cell.tier, !!cell.nest, !!cell.jaws, !!cell.event, !!cell.prey]) });
   }
-  function create() {
+  function create({ visualOnly = false } = {}) {
     let calibration = null, generation = null, previous = null, stableAt = 0, count = 0;
     function reset() { previous = null; stableAt = 0; count = 0; }
     return {
@@ -43,16 +68,16 @@
       get calibration() { return calibration; },
       observe({ epoch, time, sample, controls, valid, fresh = true }) {
         if (generation !== epoch) { generation = epoch; reset(); }
-        if (!calibration || !valid || !controls || controls === calibration.controls || !fresh || difference(calibration.sample, sample).changed < 0.01) { reset(); return false; }
+        if (!calibration || !valid || (!visualOnly && (!controls || controls === calibration.controls)) || !fresh || difference(calibration.sample, sample).changed < 0.01) { reset(); return false; }
         const delta = previous && difference(previous.sample, sample);
-        if (!previous || controls !== previous.controls || delta.changed > 0.004 || delta.mean > 1) { stableAt = time; count = 1; }
+        if (!previous || (!visualOnly && controls !== previous.controls) || delta.changed > 0.004 || delta.mean > 1) { stableAt = time; count = 1; }
         else count++;
         previous = { sample, controls };
         return count >= 3 && time - stableAt >= 200;
       },
     };
   }
-  const api = { create, sample, difference, controlsFor };
+  const api = { create, sample, sampleBitmap, difference, controlsFor };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TartarusFrameReadiness = api;
 })(typeof self !== 'undefined' ? self : globalThis);

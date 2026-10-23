@@ -5,7 +5,8 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), vm = requ
 const T = require('../js/engine.js'), S = require('../js/solver.js');
 const updates = require('../desktop/lib/upstream-updates.js');
 const version = require('../desktop/lib/upstream-version.json');
-const noEvents = { eventStartChance: 0, eventMorningChance: 0, eventWalkChance: 0, eventActionChance: 0 };
+// Hand-built boards must not inherit randomly opened starting cells or events.
+const noEvents = { startInmates: 0, eventStartChance: 0, eventFollowChance: 0, eventMorningChance: 0, eventWalkChance: 0, eventActionChance: 0 };
 function board(tools = [], count = 2, startEvent) {
   const st = T.newGame({ seed: 'UPSTREAM-RULES', startEvent, params: { ...noEvents, rewards: true } });
   st.pending = []; st.phase = 'manage'; st.position = 1;
@@ -153,9 +154,9 @@ for (let seed = 0; seed < 48; seed++) {
   st.pending[0].rerolls = 1; assert.ok(T.rerollOffer(st).ok);
   assert.ok(st.pending[0].options.every(id => !T.BEAST_TOOLS.includes(id)));
 }
-for (const [beastToolOdds, expected] of [[12, { type: 'choose', id: 'coin' }], [100, { type: 'reroll' }]]) {
+for (const [beastToolOdds, expected] of [[12, { type: 'choose', id: 'blacklist' }], [100, { type: 'reroll' }]]) {
   const st = T.newGame({ seed: 'WEIGHTED-REROLL', params: { beastToolOdds } });
-  st.pending = [{ kind: 'tool', options: ['coin', 'keys', 'fire'], rerolls: 1 }];
+  st.pending = [{ kind: 'tool', options: ['revenge', 'muzzle', 'blacklist'], rerolls: 1 }];
   assert.deepEqual(S.decide(st), expected, 'Re-roll advice ignored the instrument odds');
 }
 console.log('PASS: Maiden checks the replaced inmate before removals, Scapegoat values only other inmates, weighted start/re-roll offers and Coin advice.');

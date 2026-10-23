@@ -282,6 +282,22 @@ fn spawn(s: &mut State, chance: f64) {
     s.cells[n].event = Some(e);
     s.cells[n].seen = true;
 }
+fn follow_event(s: &mut State) {
+    if s.params.event_follow_chance <= 0.
+        || random(&mut s.rng) * 100. >= s.params.event_follow_chance
+    {
+        return;
+    }
+    let free: Vec<_> = instigate_cells(s)
+        .into_iter()
+        .filter(|&n| n != s.position)
+        .collect();
+    if let Some(n) = (!free.is_empty()).then(|| pick(&mut s.rng, &free).unwrap()) {
+        let event = event_roll(s);
+        s.cells[n].event = Some(event);
+        s.cells[n].seen = true;
+    }
+}
 fn meet(s: &mut State) {
     s.milestone = true;
     if s.params.rewards {
@@ -442,9 +458,28 @@ fn roll_destinations(s: &mut State) {
     let fewer = random(&mut s.rng) * 100. < s.params.fewer_doors_chance;
     s.dest_base = s.params.destinations.saturating_sub(fewer as usize).max(1);
     let range = s.params.patrol_range.min(15);
-    let ahead = (1..=range).map(|d| (s.position + d) % 16).collect();
-    let mut ns = shuffle(&mut s.rng, ahead);
-    ns.truncate(destination_limit(s));
+    let mut ahead: Vec<_> = (1..=range).map(|d| (s.position + d) % 16).collect();
+    let mut ns = Vec::new();
+    for _ in 0..destination_limit(s) {
+        if ahead.is_empty() {
+            break;
+        }
+        let weights: Vec<_> = ahead
+            .iter()
+            .map(|&n| {
+                if n == 0 {
+                    s.params.office_door_odds / 100.
+                } else {
+                    1.
+                }
+            })
+            .collect();
+        if !ns.is_empty() && !weights.iter().any(|&w| w > 0.) {
+            break;
+        }
+        let at = pick_index(&mut s.rng, &weights);
+        ns.push(ahead.remove(at));
+    }
     if s.params.event_two_doors
         && ns
             .iter()
@@ -1006,6 +1041,14 @@ fn swap(s: &mut State) -> bool {
     if s.has(Stake) && old.tier < 3 && random(&mut s.rng) < 0.4 && fresh.tier != 3 {
         fresh.tier = 3
     }
+    if s.params.swap_new_beast && fresh.beast == old.beast {
+        let others: Vec<_> = Beast::ALL.into_iter().filter(|&b| b != old.beast).collect();
+        let weights: Vec<_> = others
+            .iter()
+            .map(|b| s.params.beast_weights[b.index()])
+            .collect();
+        fresh.beast = others[pick_index(&mut s.rng, &weights)];
+    }
     if s.has(Pestle) {
         fresh.beast = old.beast
     }
@@ -1159,6 +1202,10 @@ fn choose(s: &mut State, id: Id) -> bool {
     true
 }
 pub fn apply(s: &mut State, action: &Action) -> bool {
+    let following = match (action, s.phase, s.event) {
+        (Action::Event { accept }, Phase::Event, Some(event)) => Some((event.kind, *accept)),
+        _ => None,
+    };
     let acted = matches!(
         action,
         Action::Event { .. }
@@ -1284,6 +1331,17 @@ pub fn apply(s: &mut State, action: &Action) -> bool {
             }
         }
     };
+    if ok
+        && following.is_some_and(|(kind, accept)| {
+            !(accept
+                && matches!(
+                    kind,
+                    EventKind::Usurp1 | EventKind::Usurp2 | EventKind::Usurp3
+                ))
+        })
+    {
+        follow_event(s);
+    }
     if ok && acted && s.chaining.is_none() {
         spawn(s, s.params.event_action_chance)
     }

@@ -1,6 +1,6 @@
 # Tartarus Optimized desktop overlay
 
-Version 0.2.19-local.26, based on author revision 3f937ec894094c24b37f2701dbe4b6ff4f480cce.
+Version 0.2.20-local.27, based on author revision 308b9479bcd0857a581a7e7b7917d0a8e0c5062e.
 
 The Windows x64 installer and portable EXE include their own Electron, native
 capture libraries, analyzer, Rust/WASM reader and Monte Carlo core, and English

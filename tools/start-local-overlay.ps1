@@ -2,7 +2,20 @@ param([switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot
 $standalone = Join-Path $workspace 'desktop\dist\win-unpacked\Tartarus Optimized.exe'
-if (!$CheckOnly -and (Test-Path -LiteralPath $standalone)) {
+$selection = Join-Path $workspace 'local\tartarus\active-standalone.json'
+if (Test-Path -LiteralPath $selection) {
+  $chosen = Get-Content -LiteralPath $selection -Raw | ConvertFrom-Json
+  $directory = [IO.Path]::GetFullPath((Join-Path $workspace $chosen.directory))
+  $distRoot = [IO.Path]::GetFullPath((Join-Path $workspace 'desktop\dist')) + '\'
+  if (!$directory.StartsWith($distRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Selected standalone must be inside desktop/dist.' }
+  $standalone = Join-Path $directory 'win-unpacked\Tartarus Optimized.exe'
+  if (!(Test-Path -LiteralPath $standalone)) { throw 'Selected standalone is missing. Rebuild with Build-Standalone.cmd.' }
+}
+if (Test-Path -LiteralPath $standalone) {
+  if ($CheckOnly) {
+    Write-Output "Standalone ready: $standalone"
+    exit 0
+  }
   Start-Process -FilePath $standalone -WorkingDirectory (Split-Path -Parent $standalone) -WindowStyle Hidden | Out-Null
   exit 0
 }

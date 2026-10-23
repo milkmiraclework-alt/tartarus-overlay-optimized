@@ -48,8 +48,16 @@ try {
   assert.equal(tracking.locate({}, { ...pixels, width: 9 }), null, 'size change retained calibration');
 } finally { Date.now = savedNow; }
 console.log('PASS: unchanged screens, missing controls, consecutive stability, action epochs, stale frames and exact panel regions.');
+const visual = R.create({ visualOnly: true });
+visual.calibrate({ sample: baseline, controls: 'old board' });
+for (const time of [0, 100, 300]) assert.equal(visual.observe({ epoch: 1, time, sample: baseline, valid: true }), false);
+assert.equal(visual.observe({ epoch: 1, time: 400, sample: changed, valid: true }), false);
+assert.equal(visual.observe({ epoch: 1, time: 500, sample: changed, valid: true }), false);
+assert.equal(visual.observe({ epoch: 1, time: 600, sample: changed, valid: true }), true);
+assert.equal(visual.observe({ epoch: 2, time: 700, sample: changed, valid: true }), false);
+assert.equal(visual.observe({ epoch: 2, time: 800, sample: changed, valid: true, fresh: false }), false);
 
-async function harness(callback) {
+async function harness(callback, pace = 1) {
   let now = 0, next = 0, wake, text = '';
   const timers = [], frames = [], events = [];
   const window = { addEventListener() {}, TartarusDesktop: { fast: true } };
@@ -62,7 +70,8 @@ async function harness(callback) {
   });
   const C = window.TartarusCapture;
   const flush = async () => { await pause(0); };
-  C.setRules([{ kind: 'board', pattern: 'S16Act', settle: 2500 }, { kind: 'skip', pattern: 'S16Skip', settle: 0 }]);
+  C.setRules([{ kind: 'board', pattern: 'S16Act|Btn_S16Board_ActionCell', settle: 2500 }, { kind: 'board', pattern: 'UI_S16_Card_Up', settle: 1500 }, { kind: 'skip', pattern: 'S16Skip', settle: 0 }]);
+  C.setPace(pace);
   C.useHandle({ name: 'UE_game.log', watch(fn) { wake = fn; return () => {}; }, async getFile() {
     return { size: Buffer.byteLength(text), slice(start, end) { return { async arrayBuffer() { const b = Buffer.from(text).subarray(start, end); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } }; } };
   } });
@@ -85,8 +94,9 @@ async function harness(callback) {
 (async () => {
   let calls = 0;
   let h = await harness(async () => ++calls >= 3);
-  await h.hit(); await h.advance(449); assert.equal(h.frames.length, 0);
-  await h.advance(800); assert.equal(h.events.length, 1); assert.equal(h.events[0].settle.mode, 'ready');
+  await h.hit(); await h.advance(149); assert.equal(h.frames.length, 0);
+  await h.advance(500); assert.equal(h.events.length, 1); assert.equal(h.events[0].settle.mode, 'ready');
+  assert.equal(h.events[0].at, 350);
   assert.ok(h.events[0].at < 2500); assert.ok(h.frames.slice(0, -1).every((frame) => frame.closed)); assert.ok(!h.events[0].frame.closed);
   await h.advance(3000); assert.equal(h.events.length, 1); h.C.stopLog(); h.C.stopWindow();
   h = await harness(async () => { throw new Error('Probe failed'); });
@@ -111,7 +121,22 @@ async function harness(callback) {
   h = await harness(() => new Promise((done) => { resolve = done; }));
   await h.hit(); await h.advance(450); await h.advance(500); await h.hit(); resolve(true); await h.flush();
   assert.equal(h.events.length, 0); assert.ok(h.frames[0].closed);
-  h.C.setReadinessProbe(async () => true); await h.advance(949); assert.equal(h.events.length, 0);
-  await h.advance(950); assert.equal(h.events.length, 1); assert.equal(h.events[0].at, 950); h.C.stopLog(); h.C.stopWindow();
+  h.C.setReadinessProbe(async () => true); await h.advance(649); assert.equal(h.events.length, 0);
+  await h.advance(650); assert.equal(h.events.length, 1); assert.equal(h.events[0].at, 650); h.C.stopLog(); h.C.stopWindow();
+  calls = 0; h = await harness(async () => ++calls >= 3, 0.45);
+  await h.hit('UI_S16_Card_Up'); await h.advance(74); assert.equal(h.frames.length, 0);
+  await h.advance(275); assert.equal(h.events.length, 1); assert.equal(h.events[0].settle.mode, 'ready');
+  assert.equal(h.events[0].at, 275, 'short Speed-up rule must use readiness instead of waiting 675 ms');
+  h.C.stopLog(); h.C.stopWindow();
+  const epochs = [], hits = [];
+  h = await harness(async (_, meta) => { epochs.push(meta.epoch); return epochs.length >= 3; });
+  h.C.on('hit', e => hits.push(e));
+  await h.hit('Btn_S16Board_ActionCell'); await h.advance(200); await h.hit('UI_S16_Card_Up');
+  await h.advance(350); assert.equal(h.events.length, 1);
+  assert.equal(h.events[0].at, 350, 'presentation sound reset a pending action');
+  assert.ok(epochs.every(epoch => epoch === epochs[0]));
+  assert.equal(hits[1].continuation, true);
+  await h.hit('UI_S16_Card_Up'); assert.equal(hits[2].continuation, false, 'next move without an explicit action was merged');
+  h.C.stopLog(); h.C.stopWindow();
   console.log('PASS: early capture, deadline fallback, unavailable/failed probes, late replies, skip/stop cancellation and bitmap ownership.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

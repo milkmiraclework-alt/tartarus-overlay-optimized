@@ -200,7 +200,7 @@
   // Matches the board's fixed frame (walls, office, courtyard, cell numbers)
   // at every scale and position, coarse to fine. Returns { s, tx, ty, score }:
   // an image point is s * (reference point) + (tx, ty).
-  function prepareBoardSearch(img, gray, ref, sharp) {
+  function prepareBoardSearch(img, gray, ref, sharp, maxLevels = Infinity) {
     const W = img.width;
     const H = img.height;
     const pts = ref.board.points;
@@ -229,7 +229,7 @@
     const bw = maxX - minX;
     const bh = maxY - minY;
     const levels = [{ g: sharp || blur(gray, W, H, 1), w: W, h: H, f: 1 }];
-    while (levels[levels.length - 1].w > 120 && levels[levels.length - 1].h > 60) {
+    while (levels.length < maxLevels && levels[levels.length - 1].w > 120 && levels[levels.length - 1].h > 60) {
       const l = levels[levels.length - 1];
       const d = half(l.g, l.w, l.h);
       levels.push({ g: d.g, w: d.w, h: d.h, f: l.f * 2 });

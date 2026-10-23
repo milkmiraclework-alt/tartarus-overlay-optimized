@@ -1,0 +1,61 @@
+{
+  "checkedAt": "2026-10-23T06:47:22.863Z",
+  "localBuild": "0.2.19-local.26",
+  "localRulesCommit": "3f937ec894094c24b37f2701dbe4b6ff4f480cce",
+  "upstream": {
+    "commit": "308b9479bcd0857a581a7e7b7917d0a8e0c5062e",
+    "sourceVersion": "0.2.20",
+    "newCommits": 4,
+    "functionalCommits": [
+      {
+        "commit": "8b17c952dabc8e3d0cfe60c527b7f9c4c091cf7a",
+        "summary": "Japanese client notice and tray language option"
+      },
+      {
+        "commit": "93d389cc27e1188bf59fb65e8cf68fb6c9c2d260",
+        "summary": "Empirical model: starting inmates, Replace distribution and different beast, weighted office doors, event successors; reset Iron Law duration between runs; new measured tool tables"
+      }
+    ],
+    "applied": false
+  },
+  "capture": {
+    "source": "Existing local.26 overlay status log, from latest startup; no new game captures",
+    "observations": 52,
+    "firstTriggerToPictureMs": {
+      "min": 619,
+      "median": 1532,
+      "p90": 2593,
+      "max": 4025
+    },
+    "lastTriggerToPictureMs": {
+      "min": 617,
+      "median": 1519,
+      "p90": 1531,
+      "max": 2508
+    },
+    "limitations": [
+      "Signal timestamps are app receipt/logging times, not physical user input or game animation completion times.",
+      "This measures the pre-reader stage; excludes screenshot recognition and simulation."
+    ],
+    "findings": [
+      "Native fs.watch already wakes the log reader; 1000 ms polling is fallback, not the normal trigger path.",
+      "First readiness probe starts at max(250,450*pace) ms and only if the remaining deadline is at least 900 ms.",
+      "At Speed-up pace=0.45, a 1500 ms rule waits 675 ms and does not start the early readiness probe.",
+      "Ready-worker currently converts the full frame, blurs it, scores the board and reads cells/controls for each of three observations; the previous saved-frame benchmark measured 301 ms per probe.",
+      "Every matched trigger advances the readiness epoch, including later UI events for the same action."
+    ]
+  },
+  "verification": [
+    "tools/capture-check.js passed",
+    "tools/readiness-check.js passed"
+  ],
+  "proposedWork": {
+    "implemented": false,
+    "priority": [
+      "Port the upstream rule changes and measured tables into both JS and Rust; regenerate WASM and invalidate incompatible MC caches.",
+      "Separate action-start signals from presentation/ready events so repeated UI events do not erase readiness evidence for the same action.",
+      "Use a bounded cheap region-based readiness stage, followed by one full semantic board validation; retain unchanged-screen rejection and cancellation.",
+      "Enable the cheap stage for short Speed-up waits and measure the first-trigger-to-capture distribution on live transitions before claiming gains."
+    ]
+  }
+}

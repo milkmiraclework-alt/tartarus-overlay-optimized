@@ -34,7 +34,8 @@ async function connect(url) {
   };
   const call = (method, params = {}) => new Promise((resolve) => {
     const request = ++id;
-    const timer = setTimeout(() => { pending.delete(request); resolve({ error: { message: `${method} timed out` } }); }, 45000);
+    const timeout = method === 'Runtime.evaluate' && process.argv.includes('--frames') ? 120000 : 45000;
+    const timer = setTimeout(() => { pending.delete(request); resolve({ error: { message: `${method} timed out` } }); }, timeout);
     pending.set(request, (message) => { clearTimeout(timer); resolve(message); });
     ws.send(JSON.stringify({ id: request, method, params }));
   });
@@ -92,6 +93,12 @@ async function checkBrowserSolver(previousBase) {
 // adding test hooks or diagnostics to the application's reader protocol.
 async function checkBrowserSearchPool(frames, previousBase, compareProbe = false) {
   const base = new URL('/js/', location.href).href;
+  for (const [globalName, file] of [['TartarusFrameReadiness', 'frame-readiness.js'], ['TartarusScan', 'scan.js']]) {
+    if (!window[globalName]) await new Promise((resolve, reject) => {
+      const script = document.createElement('script'); script.src = new URL(file, base).href;
+      script.onload = resolve; script.onerror = () => reject(new Error('Could not load ' + file)); document.head.append(script);
+    });
+  }
   const urls = [];
   const makeURL = (base) => {
   const code = `const base=${JSON.stringify(base)};
@@ -192,30 +199,63 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
     if (firstFrame && lastFrame && firstFrame.img !== lastFrame.img && firstFrame.calibration) {
       for (const [label, probeBase] of [['current', base], ...(compareProbe ? [['previous', new URL(previousBase, location.href).href]] : [])]) {
         const probe = new Worker(new URL('ready-worker.js', probeBase));
-        let id = 0, accepted = null;
+        let id = 0, accepted = null, lastProbe = null;
         async function check(img) {
           const canvas = new OffscreenCanvas(img.width, img.height);
           canvas.getContext('2d').putImageData(img, 0, 0);
           const bitmap = canvas.transferToImageBitmap(), current = ++id;
           return new Promise((resolve, reject) => {
             const timer = setTimeout(() => reject(new Error('Readiness worker timed out')), 5000);
-            probe.onmessage = ({ data }) => { if (data.id === current) { clearTimeout(timer); if (data.ready) accepted = data.prepared; resolve(data.ready); } };
+            probe.onmessage = ({ data }) => { if (data.id === current) { clearTimeout(timer); lastProbe = data.probe || null; if (data.ready) accepted = data.prepared; resolve(data.ready); } };
             probe.onerror = (error) => { clearTimeout(timer); reject(new Error(error.message)); };
             probe.postMessage({ id: current, epoch: 1, bitmap }, [bitmap]);
           });
         }
         try {
           probe.postMessage({ calibrate: firstFrame.calibration });
+          if (label === 'current') {
+            const surface = new OffscreenCanvas(32, 48), context = surface.getContext('2d', { willReadFrequently: false });
+            for (const frame of [firstFrame, lastFrame]) {
+              const full = new OffscreenCanvas(frame.img.width, frame.img.height);
+              full.getContext('2d').putImageData(frame.img, 0, 0);
+              const bitmap = full.transferToImageBitmap();
+              try {
+                const exact = TartarusFrameReadiness.sample(frame.img, firstFrame.calibration.loc, TartarusScan);
+                const small = TartarusFrameReadiness.sampleBitmap(bitmap, firstFrame.calibration.loc, TartarusScan, context) || exact;
+                if (exact.some((value, i) => value !== small[i])) throw new Error('Tiny readiness surface changed sampled pixels');
+              } finally { bitmap.close(); }
+            }
+          }
           for (let i = 0; i < 3; i++) if (await check(firstFrame.img)) throw new Error('An unchanged old screen became ready');
-          const times = [];
+          if (label === 'current') {
+            const hiddenMenu = new ImageData(lastFrame.img.data.slice(), lastFrame.img.width, lastFrame.img.height);
+            const loc = firstFrame.calibration.loc;
+            const bottom = Math.max(TartarusScan.at(loc, 0, 3)[1], TartarusScan.at(loc, 5, 3)[1]) + 30 * loc.s;
+            for (let y = Math.max(0, Math.floor(bottom)); y < hiddenMenu.height; y++) for (let x = 0; x < hiddenMenu.width; x++) {
+              const offset = (y * hiddenMenu.width + x) * 4;
+              hiddenMenu.data[offset] = hiddenMenu.data[offset + 1] = hiddenMenu.data[offset + 2] = 0;
+            }
+            for (let i = 0; i < 4; i++) {
+              if (await check(hiddenMenu)) throw new Error('Stable screen without decision controls became ready');
+              await new Promise(resolve => setTimeout(resolve, 110));
+            }
+            probe.postMessage({ calibrate: firstFrame.calibration });
+          }
+          const times = [], stages = [];
           for (let i = 0; i < 5; i++) {
             const start = performance.now();
             const ready = await check(lastFrame.img);
             times.push(performance.now() - start);
+            stages.push(lastProbe && lastProbe.stage);
             if (ready !== (i >= 2)) throw new Error('Ready-screen recognition did not require 3 stable changed frames');
             await new Promise((resolve) => setTimeout(resolve, 110));
           }
-          readinessTimings[label] = Math.round(times.sort((a, b) => a - b)[times.length >> 1]);
+          readinessTimings[label + 'CycleMs'] = Math.round(times.slice(0, 3).reduce((a, b) => a + b, 0));
+          readinessTimings[label + 'Stages'] = stages;
+          if (label === 'current') {
+            if (stages[0] !== 'visual' || stages[1] !== 'visual' || stages[2] !== 'semantic') throw new Error('Stable-frame gate did not defer semantic work');
+          }
+          readinessTimings[label] = Math.round(times.slice().sort((a, b) => a - b)[times.length >> 1]);
           if (label === 'current') {
             if (!accepted) throw new Error('Accepted readiness frame did not include its readings');
             const start = performance.now(), result = await tracked.scan(lastFrame.img, accepted);
@@ -448,11 +488,23 @@ async function checkBrowserSearchPool(frames, previousBase, compareProbe = false
 
     const pixels = await evaluate(`(async()=>{
       const stats=[];
+      for(const [name,file] of [['TartarusFrameReadiness','frame-readiness.js'],['TartarusScan','scan.js']]){
+        if(!window[name])await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/js/'+file;script.onload=resolve;script.onerror=reject;document.head.append(script);});
+      }
       for(const width of [1920,3840]){
         const height=width*9/16;
         const source=new OffscreenCanvas(width,height),ctx=source.getContext('2d');
         const gradient=ctx.createLinearGradient(0,0,width,height);
         gradient.addColorStop(0,'#183427');gradient.addColorStop(1,'#c7ac82');ctx.fillStyle=gradient;ctx.fillRect(0,0,width,height);
+        const bitmapCheck=await createImageBitmap(source),full=ctx.getImageData(0,0,width,height);
+        const tiny=new OffscreenCanvas(32,48).getContext('2d',{willReadFrequently:false});
+        for(const s of [0.63,0.675,0.81]){
+          const loc={s,tx:200.123,ty:150.456};
+          const wanted=TartarusFrameReadiness.sample(full,loc,TartarusScan);
+          const got=TartarusFrameReadiness.sampleBitmap(bitmapCheck,loc,TartarusScan,tiny);
+          if(!got||wanted.some((value,i)=>value!==got[i]))throw new Error('GPU readiness sample differs at '+width+' scale '+s);
+        }
+        bitmapCheck.close();
         const scale=Math.min(1,2600/width),w=Math.round(width*scale),h=Math.round(height*scale);
         let expected;
         let oldSync=0,newSync=0;

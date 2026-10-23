@@ -1,0 +1,97 @@
+{
+  "build": "0.2.20-local.27",
+  "measuredAt": "2026-10-23T07:11:31.462Z",
+  "cpu": "AMD Ryzen 5 3600 6-Core Processor              ",
+  "environment": {
+    "electron": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) TartarusOptimized/0.2.20-local.27 Chrome/152.0.7977.130 Electron/44.5.1 Safari/537.36",
+    "logicalCpus": 12
+  },
+  "baseline": "/sandbox/tartarus-reader-before-27/",
+  "measurement": "Alternating reader implementations, one warmup plus three timed repeats per saved frame. Full searches and calibrated reads measured in separate groups. Whole-frame results must match exactly.",
+  "limitations": "Stage timings only. Identical-frame tracked timings do not measure a whole game move; exclude capture, settling, simulation and actual profit. Concurrent user activity is uncontrolled.",
+  "sourceSha256": {
+    "js/scan.js": "651a2042d37b1ff16c920e8983646514ab215aabc1a8ed8782d6d57e3e27ea31",
+    "js/scan-worker.js": "e98fc1c6fc284a220fc1edd0ae361ea08f9d99306c565d7ae51e95df4cbfd464",
+    "js/scan-search-worker.js": "0fb7ef41780bf2c47888a47b39635b88b17174e82acefc1aa9c3ac77075e3996",
+    "js/ready-worker.js": "a577e308a8ef164ee3e8ea1cc4feda0e30c1a0446f5aa850ba5d03c210a830d8",
+    "js/analyze.js": "88887c4a29e035c1597c8125a00aaa55006ea4a60d8ba883a16135f9e30b9e30",
+    "js/scan-accelerator.js": "30d272257cd6a2146eb13a7b44d625726fd316e207bcf9ee3e8c807ef2207155",
+    "tools/scan-kernels.rs": "1f57640b05ba82735fb31487bc3adebbcb6c90eb34c3db507acb3a72d1966ee8",
+    "js/frame-readiness.js": "ac04779b22bddc32363310906130801fca594d6a20194318b83d330316153f9e",
+    "js/capture.js": "bb09c0bd4d78b478d34938a98d4e943a1bc6398b7b46a7cb63568a38f5997fd5",
+    "desktop/lib/fast-runtime.js": "c781c7b34bae89bffe100a281241374e2bc35b9110d9f104b3e33729843ee5ce"
+  },
+  "wasmSha256": "f9b72eb2e40b546a332f37c12ad367ea6d7c25679fc33c42025253548dcded06",
+  "reader": {
+    "workers": 4,
+    "frames": [
+      {
+        "name": "0004-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 855,
+        "trackedMs": 283,
+        "transition": {
+          "ms": 863,
+          "mode": "full",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 853,
+        "previousTrackedMs": 257
+      },
+      {
+        "name": "0016-board.webp",
+        "width": 2560,
+        "height": 1440,
+        "serialMs": null,
+        "parallelMs": 963,
+        "trackedMs": 352,
+        "transition": {
+          "ms": 710,
+          "mode": "tracked",
+          "panels": 0,
+          "accelerated": true,
+          "fromProbe": false
+        },
+        "previousMs": 1074,
+        "previousTrackedMs": 327
+      }
+    ],
+    "readiness": true,
+    "readinessTimings": {
+      "currentCycleMs": 811,
+      "currentStages": [
+        "visual",
+        "visual",
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "current": 563,
+      "handoffMs": 167,
+      "previousCycleMs": 1395,
+      "previousStages": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "previous": 456
+    }
+  },
+  "applicationHandoff": {
+    "values": [
+      false,
+      false,
+      true
+    ],
+    "reused": true,
+    "differentBitmap": true,
+    "handoffMs": 351
+  },
+  "readinessMeasurement": "One sequential cycle on the same saved frames: first three observations, two visual then one semantic; excludes inter-observation waits and game animation. Baseline is packaged local.26. Background system activity is uncontrolled."
+}

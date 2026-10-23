@@ -143,6 +143,7 @@
       C.setPace(settings.speed ? 0.45 : 1);
       D.setFastSettings({ speed: settings.speed });
     } else {
+      if (event.continuation) return;
       id++; latestRead = null; Auto.cancel();
       triggeredAt = performance.now();
       A.invalidate({ forecast: ['board', 'skip'].includes(event.kind) ? 'keep' : 'stop', preserve: ['board', 'skip'].includes(event.kind) });
